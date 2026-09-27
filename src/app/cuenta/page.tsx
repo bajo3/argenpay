@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
-import { activateSeller, savePayoutAccount, updateProfile } from "@/app/actions/account";
+import Link from "next/link";
+import { savePayoutAccount, updateProfile } from "@/app/actions/account";
+import { AvatarUploader } from "@/components/avatar-uploader";
+import { SellerGate } from "@/components/seller-gate";
+import { Stars } from "@/components/seller-badge";
 import { SubmitButton } from "@/components/submit-button";
-import { Flash } from "@/components/ui";
+import { Flash, formatDate } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
+import { getRatings } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Mi cuenta" };
@@ -11,48 +16,52 @@ export default async function AccountPage(props: PageProps<"/cuenta">) {
   const sp = await props.searchParams;
   const s = await requireUser("/cuenta");
   const supabase = await createClient();
-  const { data: payout } = await supabase
-    .from("seller_payout_accounts")
-    .select("holder_name, tax_id, cbu_or_alias")
-    .eq("seller_id", s.userId)
-    .maybeSingle();
+  const [{ data: payout }, ratings] = await Promise.all([
+    supabase.from("seller_payout_accounts").select("holder_name, tax_id, cbu_or_alias").eq("seller_id", s.userId).maybeSingle(),
+    getRatings([s.userId]),
+  ]);
+  const rating = ratings[s.userId];
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="h1">Mi cuenta</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <h1 className="h1 animate-fade-up">Mi cuenta</h1>
       <Flash error={sp.error} ok={sp.ok} />
 
-      <form action={updateProfile} className="card space-y-4">
-        <h2 className="h2">Perfil</h2>
-        <p className="text-sm text-muted">{s.email}</p>
-        <div>
-          <label className="label" htmlFor="display_name">Nombre visible</label>
-          <input id="display_name" name="display_name" defaultValue={s.profile.display_name} className="input" />
+      <section className="card animate-fade-up space-y-6">
+        <AvatarUploader userId={s.userId} name={s.profile.display_name} url={s.profile.avatar_url} />
+        <div className="grid gap-3 rounded-xl border border-line bg-bg-2/60 p-4 text-sm sm:grid-cols-3">
+          <div>
+            <p className="text-xs text-muted">Email</p>
+            <p className="truncate font-medium">{s.email}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Miembro desde</p>
+            <p className="font-medium">{formatDate(s.profile.created_at).split(" ")[0]}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Reputación</p>
+            <p className="font-medium">
+              {rating ? <><Stars value={rating.rating_avg} size="text-xs" /> {rating.rating_avg.toFixed(1)} ({rating.reviews_count})</> : "Sin reseñas"}
+            </p>
+          </div>
         </div>
-        <SubmitButton>Guardar</SubmitButton>
-      </form>
+        <form action={updateProfile} className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <label className="label" htmlFor="display_name">Nombre visible</label>
+            <input id="display_name" name="display_name" defaultValue={s.profile.display_name} minLength={2} maxLength={40} className="input" />
+          </div>
+          <SubmitButton>Guardar</SubmitButton>
+        </form>
+        <Link href={`/vendedores/${s.userId}`} className="inline-block text-sm text-gold hover:text-gold-2">Ver mi perfil público y reseñas →</Link>
+      </section>
 
       {!s.profile.is_seller ? (
-        <form action={activateSeller} className="card space-y-4">
-          <h2 className="h2">Perfil de vendedor</h2>
-          <p className="text-sm text-muted">
-            Para publicar ofertas necesitás activar tu perfil de vendedor. Argenpay cobra una comisión del 10% sobre
-            cada venta concretada.
-          </p>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" name="acepto_vendedor" className="mt-1" required />
-            <span>
-              Declaro que tengo derecho a vender lo que publique, que cumpliré lo ofrecido y que respeto los términos de
-              cada juego.
-            </span>
-          </label>
-          <SubmitButton>Activar perfil de vendedor</SubmitButton>
-        </form>
+        <SellerGate next="/cuenta" />
       ) : (
-        <form action={savePayoutAccount} className="card space-y-4">
+        <form action={savePayoutAccount} className="card animate-fade-up space-y-4" style={{ "--i": 1 } as React.CSSProperties}>
           <h2 className="h2">Datos de cobro</h2>
           <p className="text-sm text-muted">
-            Solo vos y el equipo de administración pueden ver estos datos. Se usan para liquidar tus ventas.
+            Solo vos y el equipo de administración pueden ver estos datos. Se usan para enviarte los retiros de tu saldo.
           </p>
           <div>
             <label className="label" htmlFor="holder_name">Titular</label>

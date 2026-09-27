@@ -18,7 +18,7 @@ interface Listing {
   id: string; seller_id: string; title: string; description: string; conditions: string;
   price_cents: number; stock: number; min_quantity: number; delivery_time_hours: number; status: string; created_at: string;
   char_race: string | null; char_class: string | null; char_level: number | null;
-  seller: { id: string; display_name: string; created_at: string; last_seen_at: string | null } | null;
+  seller: { id: string; display_name: string; created_at: string; last_seen_at: string | null; avatar_url: string | null } | null;
   category: { name: string; slug: string; unit_label: string; unit_label_plural: string } | null;
   server: { name: string } | null;
 }
@@ -28,7 +28,7 @@ export async function generateMetadata(props: PageProps<"/ofertas/[id]">) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return {};
   const supabase = await createClient();
   const { data } = await supabase.from("listings").select("title").eq("id", id).maybeSingle();
-  return { title: data?.title ?? "Lote" };
+  return { title: data?.title ?? "Oferta" };
 }
 
 export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
@@ -41,7 +41,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
     .from("listings")
     .select(
       "id, seller_id, title, description, conditions, price_cents, stock, min_quantity, delivery_time_hours, status, created_at, char_race, char_class, char_level, " +
-        "seller:profiles!listings_seller_id_fkey(id, display_name, created_at, last_seen_at), category:categories(name, slug, unit_label, unit_label_plural), server:game_servers(name)",
+        "seller:profiles!listings_seller_id_fkey(id, display_name, created_at, last_seen_at, avatar_url), category:categories(name, slug, unit_label, unit_label_plural), server:game_servers(name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -79,7 +79,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
     <div className="space-y-6">
       <Flash error={sp.error} ok={sp.ok} />
       <nav className="animate-fade-up text-sm text-muted">
-        <Link href="/lotes/todos" className="hover:text-gold-2">Lotes LU4</Link>
+        <Link href="/lotes/todos" className="hover:text-gold-2">Mercado LU4</Link>
         <span className="mx-2 text-line">/</span>
         <Link href={`/lotes/${l.category?.slug ?? "todos"}`} className="hover:text-gold-2">{l.category?.name}</Link>
         {l.server && (
@@ -158,7 +158,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
                 {isOwner ? (
                   <Link href={`/panel/vendedor/publicaciones/${l.id}`} className="btn-ghost w-full">Editar publicación</Link>
                 ) : !available ? (
-                  <p className="text-sm text-muted">Este lote no está disponible en este momento.</p>
+                  <p className="text-sm text-muted">Esta oferta no está disponible en este momento.</p>
                 ) : cfg.mode === "bloqueado" ? (
                   <p className="text-sm text-muted">Las compras están deshabilitadas por el momento.</p>
                 ) : (
@@ -179,7 +179,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
           {l.seller && (
             <section className="card animate-fade-up" style={{ "--i": 1 } as React.CSSProperties}>
               <Link href={`/vendedores/${l.seller.id}`} className="flex items-center gap-3 hover:text-gold-2">
-                <Avatar name={l.seller.display_name} size={48} online={online} />
+                <Avatar name={l.seller.display_name} url={l.seller.avatar_url} size={52} online={online} />
                 <div className="min-w-0">
                   <p className="truncate font-display text-lg font-bold">{l.seller.display_name}</p>
                   <p className={`text-xs ${online ? "text-ok" : "text-muted"}`}>{lastSeenLabel(l.seller.last_seen_at)}</p>
@@ -203,7 +203,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
 
           {more.length > 0 && (
             <section className="card">
-              <h2 className="h2 mb-3 text-base">Otros lotes de este vendedor</h2>
+              <h2 className="h2 mb-3 text-base">Otras ofertas de este vendedor</h2>
               <ul className="space-y-2">
                 {more.map((m) => (
                   <li key={m.id}>

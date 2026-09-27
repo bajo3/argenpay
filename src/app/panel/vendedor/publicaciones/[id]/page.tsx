@@ -9,7 +9,7 @@ import { centsToInput } from "@/lib/money";
 import { getPlatformSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Editar lote" };
+export const metadata: Metadata = { title: "Editar oferta" };
 
 export default async function EditListingPage(props: PageProps<"/panel/vendedor/publicaciones/[id]">) {
   const { id } = await props.params;
@@ -22,7 +22,7 @@ export default async function EditListingPage(props: PageProps<"/panel/vendedor/
   const [catalog, settings] = await Promise.all([getCatalog(), getPlatformSettings()]);
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <h1 className="h1 animate-fade-up">Editar lote</h1>
+      <h1 className="h1 animate-fade-up">Editar oferta</h1>
       <Flash error={sp.error} ok={sp.ok} />
       <ListingForm
         action={updateListing}

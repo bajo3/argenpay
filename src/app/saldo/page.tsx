@@ -1,0 +1,165 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { requestWithdrawal, startDeposit } from "@/app/actions/wallet";
+import { SubmitButton } from "@/components/submit-button";
+import { EmptyState, Flash, formatDate, shortId } from "@/components/ui";
+import { requireUser } from "@/lib/auth";
+import { formatARS } from "@/lib/money";
+import { createClient } from "@/lib/supabase/server";
+import { getMyWallet, WALLET_KIND_LABEL, walletEnabled } from "@/lib/wallet";
+
+export const metadata: Metadata = { title: "Saldo" };
+
+const W_STATUS: Record<string, { label: string; cls: string }> = {
+  pendiente: { label: "Pendiente", cls: "border-gold/40 bg-gold/10 text-gold-2" },
+  pagado: { label: "Pagado", cls: "border-ok/30 bg-ok/10 text-ok" },
+  rechazado: { label: "Rechazado", cls: "border-bad/30 bg-bad/10 text-bad" },
+};
+
+export default async function WalletPage(props: PageProps<"/saldo">) {
+  const sp = await props.searchParams;
+  const s = await requireUser("/saldo");
+  if (!walletEnabled()) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <EmptyState title="El saldo no está disponible">Por ahora los pagos se hacen directamente con el procesador en cada orden.</EmptyState>
+      </div>
+    );
+  }
+  const supabase = await createClient();
+  const [wallet, entriesRes, withdrawalsRes, payoutRes] = await Promise.all([
+    getMyWallet(),
+    supabase.from("wallet_entries").select("id, amount_cents, kind, order_id, note, created_at").eq("user_id", s.userId).order("id", { ascending: false }).limit(100),
+    supabase.from("withdrawals").select("id, amount_cents, status, destination, admin_note, created_at, processed_at").eq("user_id", s.userId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("seller_payout_accounts").select("cbu_or_alias, holder_name").eq("seller_id", s.userId).maybeSingle(),
+  ]);
+  const w = wallet ?? { available: 0, pendingSales: 0, pendingWithdrawals: 0 };
+  const entries = entriesRes.data ?? [];
+  const withdrawals = withdrawalsRes.data ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="animate-fade-up flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="h1">Saldo</h1>
+          <p className="mt-1 text-sm text-muted">Tus compras, ventas liberadas, cargas y retiros en un solo lugar.</p>
+        </div>
+        <span className="rounded-full border border-gold/30 bg-warn-bg px-3 py-1 text-xs font-semibold text-warn-ink">Entorno simulado · no es dinero real</span>
+      </div>
+      <Flash error={sp.error} ok={sp.ok} />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="card animate-fade-up relative overflow-hidden border-gold/30">
+          <span className="absolute -top-12 -right-12 h-32 w-32 rounded-full bg-gold/20 blur-2xl animate-glow" />
+          <p className="relative text-sm text-muted">Disponible</p>
+          <p className="relative font-display text-3xl font-bold text-gold-2">{formatARS(w.available)}</p>
+        </div>
+        <div className="card animate-fade-up" style={{ "--i": 1 } as React.CSSProperties}>
+          <p className="text-sm text-muted">Ventas en curso</p>
+          <p className="font-display text-2xl font-bold">{formatARS(w.pendingSales)}</p>
+          <p className="hint">Se liberan cuando el comprador confirma la recepción.</p>
+        </div>
+        <div className="card animate-fade-up" style={{ "--i": 2 } as React.CSSProperties}>
+          <p className="text-sm text-muted">Retiros en proceso</p>
+          <p className="font-display text-2xl font-bold">{formatARS(w.pendingWithdrawals)}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <form action={startDeposit} className="card animate-fade-up space-y-3">
+          <h2 className="h2">Cargar saldo</h2>
+          <p className="text-sm text-muted">Cargá saldo para pagar tus compras al instante.</p>
+          <div className="flex flex-wrap gap-2">
+            {["5.000", "10.000", "25.000", "50.000"].map((v) => (
+              <span key={v} className="chip px-2.5 py-1 text-xs">$ {v}</span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input name="amount" inputMode="decimal" required placeholder="Importe, ej: 10.000" className="input" aria-label="Importe a cargar" />
+            <SubmitButton className="btn-primary shine shrink-0" pendingText="…">Cargar</SubmitButton>
+          </div>
+          <p className="hint">Vas al checkout del procesador (simulado) para aprobar la carga.</p>
+        </form>
+
+        <form action={requestWithdrawal} className="card animate-fade-up space-y-3" style={{ "--i": 1 } as React.CSSProperties}>
+          <h2 className="h2">Retirar</h2>
+          {payoutRes.data ? (
+            <p className="text-sm text-muted">
+              A <strong className="text-ink">{payoutRes.data.cbu_or_alias}</strong> · {payoutRes.data.holder_name}{" "}
+              <Link href="/cuenta" className="text-gold hover:text-gold-2">cambiar</Link>
+            </p>
+          ) : (
+            <p className="text-sm text-muted">
+              Primero cargá tu CBU/CVU o alias en <Link href="/cuenta" className="text-gold hover:text-gold-2">Mi cuenta</Link>.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <input name="amount" inputMode="decimal" required placeholder={`Hasta ${formatARS(w.available)}`} className="input" aria-label="Importe a retirar" />
+            <SubmitButton className="btn-ghost shrink-0" pendingText="…" confirm="¿Solicitar el retiro? El importe se reserva de tu saldo hasta que se procese.">
+              Retirar
+            </SubmitButton>
+          </div>
+          <p className="hint">Un administrador procesa el retiro. Si se rechaza, el dinero vuelve a tu saldo.</p>
+        </form>
+      </div>
+
+      {withdrawals.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="h2">Retiros</h2>
+          <div className="overflow-x-auto rounded-2xl border border-line bg-surface/80">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="bg-surface-2/60 text-left text-xs tracking-wide text-muted uppercase">
+                <tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Destino</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3 text-right">Importe</th></tr>
+              </thead>
+              <tbody>
+                {withdrawals.map((x) => (
+                  <tr key={x.id} className="border-t border-line">
+                    <td className="px-4 py-3 text-muted">{formatDate(x.created_at)}</td>
+                    <td className="px-4 py-3">{(x.destination as { cbu_or_alias?: string }).cbu_or_alias}{x.admin_note && <p className="text-xs text-muted">{x.admin_note}</p>}</td>
+                    <td className="px-4 py-3"><span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${W_STATUS[x.status].cls}`}>{W_STATUS[x.status].label}</span></td>
+                    <td className="px-4 py-3 text-right font-semibold">{formatARS(Number(x.amount_cents))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-3">
+        <h2 className="h2">Movimientos</h2>
+        {entries.length ? (
+          <div className="overflow-x-auto rounded-2xl border border-line bg-surface/80">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="bg-surface-2/60 text-left text-xs tracking-wide text-muted uppercase">
+                <tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Concepto</th><th className="px-4 py-3">Orden</th><th className="px-4 py-3 text-right">Importe</th></tr>
+              </thead>
+              <tbody>
+                {entries.map((e) => {
+                  const amount = Number(e.amount_cents);
+                  return (
+                    <tr key={e.id} className="border-t border-line hover:bg-gold/[0.04]">
+                      <td className="px-4 py-3 text-muted">{formatDate(e.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-medium">{WALLET_KIND_LABEL[e.kind] ?? e.kind}</span>
+                        {e.note && <p className="text-xs text-muted">{e.note}</p>}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {e.order_id ? <Link href={`/ordenes/${e.order_id}`} className="text-gold hover:underline">{shortId(e.order_id)}</Link> : "—"}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-semibold ${amount > 0 ? "text-ok" : "text-ink"}`}>
+                        {amount > 0 ? "+" : "−"}{formatARS(Math.abs(amount))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="Todavía no tenés movimientos">Cargá saldo o concretá tu primera venta.</EmptyState>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { maintenance, settle, settleAllConfirmed } from "@/app/actions/admin";
 import { orderAction, requestRefund } from "@/app/actions/orders";
+import { processWithdrawal } from "@/app/actions/wallet";
 import { OrdersTable, type OrderListRow } from "@/components/orders-table";
 import { SubmitButton } from "@/components/submit-button";
 import { EmptyState, Flash, formatDate, shortId } from "@/components/ui";
@@ -30,7 +31,7 @@ export default async function AdminPage(props: PageProps<"/admin">) {
     .limit(100);
   if (estado) ordersQ = ordersQ.eq("status", estado);
 
-  const [orders, allTotals, disputes, toSettle, txs, settings] = await Promise.all([
+  const [orders, allTotals, disputes, toSettle, txs, settings, withdrawals] = await Promise.all([
     ordersQ,
     supabase.from("orders").select("status, price_cents, commission_cents, platform_net_cents"),
     supabase
@@ -45,6 +46,11 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .order("confirmed_at"),
     supabase.from("payment_transactions").select("id, order_id, provider, kind, provider_ref, amount_cents, created_at").order("id", { ascending: false }).limit(15),
     getPlatformSettings(),
+    supabase
+      .from("withdrawals")
+      .select("id, amount_cents, destination, created_at, user:profiles!withdrawals_user_id_fkey(display_name)")
+      .eq("status", "pendiente")
+      .order("created_at"),
   ]);
 
   const totals = (allTotals.data ?? []).reduce(
@@ -128,6 +134,40 @@ export default async function AdminPage(props: PageProps<"/admin">) {
           })
         ) : (
           <EmptyState title="No hay reclamos abiertos" />
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="h2">Retiros pendientes</h2>
+        {withdrawals.data?.length ? (
+          <div className="space-y-3">
+            {withdrawals.data.map((w) => {
+              const dest = w.destination as { holder_name?: string; tax_id?: string; cbu_or_alias?: string };
+              return (
+                <div key={w.id} className="card flex flex-wrap items-center gap-4">
+                  <div className="min-w-48 flex-1 text-sm">
+                    <p className="font-semibold">{(w.user as unknown as { display_name: string } | null)?.display_name}</p>
+                    <p className="text-muted">{dest.holder_name} · CUIT {dest.tax_id} · {dest.cbu_or_alias}</p>
+                    <p className="text-xs text-muted">{formatDate(w.created_at)}</p>
+                  </div>
+                  <p className="font-display text-xl font-bold text-gold-2">{formatARS(Number(w.amount_cents))}</p>
+                  <form action={processWithdrawal}>
+                    <input type="hidden" name="withdrawal_id" value={w.id} />
+                    <input type="hidden" name="decision" value="aprobar" />
+                    <SubmitButton confirm="¿Transferir este retiro? (simulado)">Pagar</SubmitButton>
+                  </form>
+                  <form action={processWithdrawal} className="flex gap-2">
+                    <input type="hidden" name="withdrawal_id" value={w.id} />
+                    <input type="hidden" name="decision" value="rechazar" />
+                    <input name="note" required placeholder="Motivo" className="input w-36" />
+                    <SubmitButton className="btn-danger">Rechazar</SubmitButton>
+                  </form>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState title="No hay retiros pendientes" />
         )}
       </section>
 

@@ -33,7 +33,7 @@ export async function getCatalog() {
 
 export const LOT_SELECT =
   "id, title, price_cents, stock, min_quantity, delivery_time_hours, created_at, char_race, char_class, char_level, seller_id, " +
-  "seller:profiles!listings_seller_id_fkey!inner(id, display_name, last_seen_at), " +
+  "seller:profiles!listings_seller_id_fkey!inner(id, display_name, last_seen_at, avatar_url), " +
   "category:categories(slug, name, unit_label, unit_label_plural), server:game_servers(id, name)";
 
 export interface LotRow {
@@ -48,20 +48,20 @@ export interface LotRow {
   char_class: string | null;
   char_level: number | null;
   seller_id: string;
-  seller: { id: string; display_name: string; last_seen_at: string | null };
+  seller: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null };
   category: { slug: string; name: string; unit_label: string; unit_label_plural: string } | null;
   server: { id: string; name: string } | null;
 }
 
-export interface Rating { reviews_count: number; rating_avg: number }
+export interface Rating { reviews_count: number; rating_avg: number; r5?: number; r4?: number; r3?: number; r2?: number; r1?: number }
 
 /** Calificaciones públicas por vendedor. */
 export async function getRatings(sellerIds: string[]): Promise<Record<string, Rating>> {
   const ids = [...new Set(sellerIds)];
   if (!ids.length) return {};
   const supabase = await createClient();
-  const { data } = await supabase.from("seller_ratings").select("seller_id, reviews_count, rating_avg").in("seller_id", ids);
+  const { data } = await supabase.from("seller_ratings").select("seller_id, reviews_count, rating_avg, r5, r4, r3, r2, r1").in("seller_id", ids);
   return Object.fromEntries(
-    (data ?? []).map((r) => [r.seller_id, { reviews_count: Number(r.reviews_count), rating_avg: Number(r.rating_avg) }]),
+    (data ?? []).map((r) => [r.seller_id, { reviews_count: Number(r.reviews_count), rating_avg: Number(r.rating_avg), r5: r.r5, r4: r.r4, r3: r.r3, r2: r.r2, r1: r.r1 }]),
   );
 }

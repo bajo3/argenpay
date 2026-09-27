@@ -14,7 +14,7 @@ export interface ConversationRow {
 }
 
 export interface ConversationView extends ConversationRow {
-  other: { id: string; display_name: string; last_seen_at: string | null } | null;
+  other: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null; created_at: string } | null;
   unread: boolean;
 }
 
@@ -30,7 +30,7 @@ export async function listConversations(me: string): Promise<ConversationView[]>
   const rows = (data ?? []) as ConversationRow[];
   const otherIds = rows.map((c) => (c.user_low === me ? c.user_high : c.user_low));
   const { data: profiles } = otherIds.length
-    ? await supabase.from("profiles").select("id, display_name, last_seen_at").in("id", otherIds)
+    ? await supabase.from("profiles").select("id, display_name, last_seen_at, avatar_url, created_at").in("id", otherIds)
     : { data: [] };
   const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
   return rows.map((c) => {

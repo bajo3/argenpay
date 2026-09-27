@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { orderAction, payOrder, requestRefund } from "@/app/actions/orders";
-import { leaveReview } from "@/app/actions/social";
+import { leaveReview, replyReview } from "@/app/actions/social";
+import { payWithBalance } from "@/app/actions/wallet";
 import { ChatBox } from "@/components/chat-box";
 import { DeliveryForm } from "@/components/delivery-form";
-import { Stars } from "@/components/seller-badge";
+import { Stars, UserCell } from "@/components/seller-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Flash, formatDate, shortId, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -22,6 +23,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/state-machine";
 import { createClient } from "@/lib/supabase/server";
+import { getMyWallet } from "@/lib/wallet";
 
 export const metadata: Metadata = { title: "Orden" };
 
@@ -37,7 +39,9 @@ interface Order {
   listing_id: string; listing_snapshot: Snapshot;
   delivery_time_hours: number; paid_at: string | null; delivery_due_at: string | null; delivered_at: string | null;
   auto_confirm_at: string | null; confirmed_at: string | null; created_at: string;
-  buyer: { display_name: string } | null; seller: { display_name: string } | null;
+  paid_with: string | null;
+  buyer: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null } | null;
+  seller: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null } | null;
 }
 
 const ROLE_LABEL: Record<string, string> = { comprador: "Comprador", vendedor: "Vendedor", admin: "Admin", sistema: "Sistema" };
@@ -61,7 +65,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("orders")
-    .select("*, buyer:profiles!orders_buyer_id_fkey(display_name), seller:profiles!orders_seller_id_fkey(display_name)")
+    .select("*, buyer:profiles!orders_buyer_id_fkey(id, display_name, last_seen_at, avatar_url), seller:profiles!orders_seller_id_fkey(id, display_name, last_seen_at, avatar_url)")
     .eq("id", id)
     .maybeSingle();
   if (!data) notFound(); // RLS: solo participantes y admins
@@ -71,10 +75,13 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
     supabase.from("order_events").select("id, actor_role, event_type, from_status, to_status, note, created_at").eq("order_id", id).order("id"),
     supabase.from("delivery_evidence").select("id, description, file_path, created_at").eq("order_id", id).order("id"),
     supabase.from("disputes").select("reason, status, resolution, resolution_note, created_at, resolved_at").eq("order_id", id).maybeSingle(),
-    supabase.from("reviews").select("rating, body, created_at").eq("order_id", id).maybeSingle(),
+    supabase.from("reviews").select("id, rating, body, created_at, seller_reply").eq("order_id", id).maybeSingle(),
     findConversation(o.buyer_id, o.seller_id),
   ]);
-  const messages = conversationId ? await getMessages(conversationId) : [];
+  const [messages, wallet] = await Promise.all([
+    conversationId ? getMessages(conversationId) : Promise.resolve([]),
+    o.buyer_id === s.userId && o.status === "pendiente_pago" && o.payment_mode === "simulado" ? getMyWallet() : Promise.resolve(null),
+  ]);
 
   const evidenceWithUrls = await Promise.all(
     (evidence.data ?? []).map(async (e) => {
@@ -156,12 +163,28 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
             <NextStepText o={o} role={role} />
 
             {o.status === "pendiente_pago" && role === "comprador" && cfg.mode !== "bloqueado" && (
-              <form action={payOrder}>
-                <input type="hidden" name="order_id" value={o.id} />
-                <SubmitButton className="btn-primary shine px-6 py-3 text-base" pendingText="Redirigiendo…">
-                  Pagar {formatARS(Number(o.price_cents))}{o.payment_mode === "simulado" ? " (simulado)" : ""}
-                </SubmitButton>
-              </form>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {wallet && (
+                  <form action={payWithBalance} className="rounded-xl border border-gold/30 bg-gold/5 p-4">
+                    <input type="hidden" name="order_id" value={o.id} />
+                    <p className="text-sm font-semibold">Pagar con saldo</p>
+                    <p className="mb-3 text-xs text-muted">Disponible: {formatARS(wallet.available)}</p>
+                    {wallet.available >= Number(o.price_cents) ? (
+                      <SubmitButton className="btn-primary shine w-full" pendingText="Pagando…">Pagar {formatARS(Number(o.price_cents))}</SubmitButton>
+                    ) : (
+                      <Link href="/saldo" className="btn-ghost w-full">Cargar saldo</Link>
+                    )}
+                  </form>
+                )}
+                <form action={payOrder} className="rounded-xl border border-line bg-bg-2/60 p-4">
+                  <input type="hidden" name="order_id" value={o.id} />
+                  <p className="text-sm font-semibold">Pagar con el procesador</p>
+                  <p className="mb-3 text-xs text-muted">{o.payment_mode === "simulado" ? "Checkout de prueba (simulado)" : "Tarjeta, débito o dinero en cuenta"}</p>
+                  <SubmitButton className={wallet ? "btn-ghost w-full" : "btn-primary shine w-full"} pendingText="Redirigiendo…">
+                    Pagar {formatARS(Number(o.price_cents))}
+                  </SubmitButton>
+                </form>
+              </div>
             )}
 
             {actions.map((t) => {
@@ -178,9 +201,9 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                   )}
                   <SubmitButton
                     className={t.action === "abrir_reclamo" || t.action === "cancelar" ? "btn-danger" : "btn-primary shine"}
-                    confirm={t.action === "confirmar_recepcion" ? "¿Confirmás que recibiste todo lo acordado en el juego? Esta acción cierra la operación." : undefined}
+                    confirm={t.action === "confirmar_recepcion" ? "¿Confirmás que recibiste todo lo acordado en el juego? Se libera el pago al vendedor y no se puede deshacer." : undefined}
                   >
-                    {t.label}
+                    {t.action === "confirmar_recepcion" ? "Recibí todo · liberar pago al vendedor" : t.label}
                   </SubmitButton>
                 </form>
               );
@@ -218,6 +241,16 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
               <div className="rounded-xl border border-line bg-bg-2/60 p-3 text-sm">
                 <p className="text-muted">Reseña del comprador</p>
                 <Stars value={review.data.rating} /> {review.data.body && <p className="mt-1">{review.data.body}</p>}
+                {review.data.seller_reply ? (
+                  <p className="mt-2 border-l-2 border-gold/50 pl-3 text-muted"><span className="font-semibold text-gold-2">Respuesta del vendedor:</span> {review.data.seller_reply}</p>
+                ) : role === "vendedor" ? (
+                  <form action={replyReview} className="mt-3 flex gap-2">
+                    <input type="hidden" name="review_id" value={review.data.id} />
+                    <input type="hidden" name="back" value={`/ordenes/${o.id}`} />
+                    <input name="body" required maxLength={1000} className="input" placeholder="Respondé la reseña (opcional)" />
+                    <SubmitButton className="btn-ghost shrink-0">Responder</SubmitButton>
+                  </form>
+                ) : null}
               </div>
             )}
           </section>
@@ -290,8 +323,11 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
           <section className="card text-sm">
             <h2 className="h2 mb-3">Datos</h2>
             <dl className="space-y-1.5">
-              <Row label="Comprador" value={o.buyer?.display_name ?? "—"} />
-              <Row label="Vendedor" value={o.seller?.display_name ?? "—"} />
+              <div className="grid grid-cols-2 gap-3 pb-2">
+                <div><p className="mb-1 text-xs text-muted">Comprador</p><UserCell user={o.buyer} /></div>
+                <div><p className="mb-1 text-xs text-muted">Vendedor</p><UserCell user={o.seller} /></div>
+              </div>
+              {o.paid_with && <Row label="Medio de pago" value={o.paid_with === "saldo" ? "Saldo de Argenpay" : "Procesador"} />}
               <Row label="Pago confirmado" value={formatDate(o.paid_at)} />
               <Row label="Entrega estimada hasta" value={formatDate(o.delivery_due_at)} />
               <Row label="Entregado" value={formatDate(o.delivered_at)} />
@@ -336,12 +372,12 @@ function NextStepText({ o, role }: { o: Order; role: Actor }) {
     pendiente_pago: { comprador: "Pagá la orden para que el vendedor pueda entregar.", vendedor: "Esperando el pago del comprador. No entregues nada todavía." },
     pago_confirmado: { comprador: "El pago está confirmado. Coordiná la entrega en el juego por el chat (nick, horario, ciudad).", vendedor: "Pago confirmado: coordiná la entrega por el chat (trade, correo o tienda privada)." },
     entrega_en_curso: { comprador: "El vendedor está haciendo la entrega en el juego.", vendedor: "Cuando termines, marcá la orden como entregada con evidencia (captura del trade o del correo)." },
-    entregado: { comprador: "Revisá en el juego lo recibido. Confirmá la recepción o abrí un reclamo antes de la confirmación automática.", vendedor: "Esperando la confirmación del comprador." },
-    confirmado: { comprador: "Operación confirmada. ¡Gracias!", vendedor: "Operación confirmada. Tu neto queda pendiente de liquidación." },
+    entregado: { comprador: "Revisá en el juego lo recibido. Cuando confirmes, se libera el pago al vendedor. Si algo no coincide, abrí un reclamo antes de la confirmación automática.", vendedor: "Esperando que el comprador confirme la recepción para liberar tu pago." },
+    confirmado: { comprador: "Operación confirmada. ¡Gracias!", vendedor: "Operación confirmada. Tu neto se está liberando." },
     en_reclamo: { comprador: "Un administrador está revisando el reclamo y el chat.", vendedor: "El comprador abrió un reclamo. Respondé por el chat con toda la información." },
     reembolsado: { comprador: "Se registró el reembolso total.", vendedor: "La orden fue reembolsada al comprador." },
     cancelado: { comprador: "La orden fue cancelada.", vendedor: "La orden fue cancelada." },
-    liquidado: { comprador: "Operación cerrada.", vendedor: "Tu neto fue liquidado." },
+    liquidado: { comprador: "Operación cerrada. ¡Gracias por comprar en Argenpay!", vendedor: "El pago se liberó: tu neto ya está en tu saldo." },
   };
   const text = t[o.status]?.[role] ?? `Estado: ${STATUS_LABELS[o.status]}.`;
   return <p className="text-sm text-muted">{text}</p>;

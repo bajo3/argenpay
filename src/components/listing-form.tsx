@@ -11,6 +11,10 @@ interface Props {
   servers: { id: string; name: string }[];
   categories: CategoryOption[];
   fees: { commissionBps: number; processorFeeBps: number; processorFeePolicy: ProcessorFeePolicy };
+  /** Categoría fija (páginas "Publicar cuenta/adena/ítem/servicio"). */
+  fixedCategoryId?: string;
+  /** Página a la que se vuelve si hay un error de validación. */
+  backPath?: string;
   initial?: {
     id: string; title: string; description: string; conditions: string; price: string; stock: number; min_quantity: number;
     delivery_time_hours: number; server_id: string | null; category_id: string;
@@ -25,8 +29,8 @@ const PLACEHOLDERS: Record<string, { title: string; description: string }> = {
   servicios: { title: "Leveo 40→61 en 3 días", description: "Qué incluye el servicio, horarios, requisitos y qué necesitás darme." },
 };
 
-export function ListingForm({ action, servers, categories, fees, initial }: Props) {
-  const [categoryId, setCategoryId] = useState(initial?.category_id ?? categories[0]?.id ?? "");
+export function ListingForm({ action, servers, categories, fees, initial, fixedCategoryId, backPath }: Props) {
+  const [categoryId, setCategoryId] = useState(fixedCategoryId ?? initial?.category_id ?? categories[0]?.id ?? "");
   const [price, setPrice] = useState(initial?.price ?? "");
   const category = categories.find((c) => c.id === categoryId);
   const slug = category?.slug ?? "adena";
@@ -39,10 +43,12 @@ export function ListingForm({ action, servers, categories, fees, initial }: Prop
   return (
     <form action={action} className="space-y-6">
       {initial && <input type="hidden" name="id" value={initial.id} />}
+      {backPath && <input type="hidden" name="back" value={backPath} />}
 
       <section className="card space-y-4">
-        <h2 className="h2">¿Qué vendés?</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <h2 className="h2">{fixedCategoryId ? "Servidor" : "¿Qué vendés?"}</h2>
+        {fixedCategoryId && <input type="hidden" name="category_id" value={fixedCategoryId} />}
+        <div className={`grid grid-cols-2 gap-2 sm:grid-cols-4 ${fixedCategoryId ? "hidden" : ""}`}>
           {categories.map((c) => (
             <label key={c.id} className={`chip cursor-pointer justify-center py-2.5 ${categoryId === c.id ? "chip-active" : ""}`}>
               <input type="radio" name="category_id" value={c.id} checked={categoryId === c.id} onChange={() => setCategoryId(c.id)} className="sr-only" />
@@ -51,7 +57,7 @@ export function ListingForm({ action, servers, categories, fees, initial }: Prop
           ))}
         </div>
         <div>
-          <label className="label" htmlFor="server_id">Servidor</label>
+          <label className={`label ${fixedCategoryId ? "sr-only" : ""}`} htmlFor="server_id">Servidor</label>
           <select id="server_id" name="server_id" defaultValue={initial?.server_id ?? servers[0]?.id ?? ""} className="input" required={slug === "adena"}>
             {slug !== "adena" && <option value="">Todos / no aplica</option>}
             {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -133,7 +139,7 @@ export function ListingForm({ action, servers, categories, fees, initial }: Prop
       </section>
 
       <SubmitButton className="btn-primary shine px-8 py-3 text-base" pendingText="Guardando…">
-        {initial ? "Guardar cambios" : "Publicar lote"}
+        {initial ? "Guardar cambios" : `Publicar ${slug === "adena" ? "adena" : slug === "cuentas" ? "cuenta" : slug === "items" ? "ítem" : "servicio"}`}
       </SubmitButton>
     </form>
   );

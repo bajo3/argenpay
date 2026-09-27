@@ -55,7 +55,7 @@ export default async function Home() {
           </p>
           <div className="animate-fade-up mt-8 flex flex-wrap gap-3" style={{ "--i": 3 } as React.CSSProperties}>
             <Link href="/lotes/adena" className="btn-primary shine px-6 py-3 text-base">Comprar adena</Link>
-            <Link href="/panel/vendedor/publicaciones/nueva" className="btn-ghost px-6 py-3 text-base">Vender en LU4</Link>
+            <Link href="/publicar" className="btn-ghost px-6 py-3 text-base">Vender en LU4</Link>
           </div>
         </div>
       </section>
@@ -64,7 +64,7 @@ export default async function Home() {
       <section>
         <div className="mb-4 flex items-end justify-between">
           <h2 className="h2 text-xl">Servidores</h2>
-          <Link href="/lotes/todos" className="text-sm text-gold hover:text-gold-2">Ver todos los lotes →</Link>
+          <Link href="/lotes/todos" className="text-sm text-gold hover:text-gold-2">Ver todas las ofertas →</Link>
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {servers.map((s, i) => (
@@ -77,7 +77,7 @@ export default async function Home() {
               <span className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-gold/10 blur-2xl transition group-hover:bg-gold/25" />
               <p className="font-display text-xl font-bold group-hover:text-gold-2">{s.name}</p>
               <p className="mt-1 text-xs text-muted">{s.description || "Interlude x1"}</p>
-              <p className="mt-4 text-sm"><span className="font-semibold text-gold-2">{byServer(s.id)}</span> <span className="text-muted">lotes activos</span></p>
+              <p className="mt-4 text-sm"><span className="font-semibold text-gold-2">{byServer(s.id)}</span> <span className="text-muted">ofertas activas</span></p>
             </Link>
           ))}
         </div>
@@ -103,7 +103,7 @@ export default async function Home() {
                 <p className="mt-4 font-display text-lg font-bold group-hover:text-gold-2">{c.name}</p>
                 <p className="mt-1 text-sm text-muted">{c.description}</p>
                 <p className="mt-4 text-sm text-muted">
-                  {rows.length} lotes{min !== null && <> · desde <span className="font-semibold text-gold-2">{formatARS(min)}</span>/{c.unit_label}</>}
+                  {rows.length} ofertas{min !== null && <> · desde <span className="font-semibold text-gold-2">{formatARS(min)}</span>/{c.unit_label}</>}
                 </p>
               </Link>
             );
@@ -114,13 +114,13 @@ export default async function Home() {
       {/* Últimos lotes */}
       <section>
         <div className="mb-4 flex items-end justify-between">
-          <h2 className="h2 text-xl">Últimos lotes publicados</h2>
+          <h2 className="h2 text-xl">Últimas ofertas publicadas</h2>
           <Link href="/lotes/todos" className="text-sm text-gold hover:text-gold-2">Ver todos →</Link>
         </div>
         {lots.length ? (
           <LotList lots={lots} ratings={ratings} />
         ) : (
-          <EmptyState title="Todavía no hay lotes publicados" href="/panel/vendedor/publicaciones/nueva" cta="Publicar el primero">
+          <EmptyState title="Todavía no hay ofertas publicadas" href="/publicar" cta="Publicar el primero">
             Sé la primera persona en vender {adena ? "adena" : "en LU4"} en Argenpay.
           </EmptyState>
         )}
@@ -129,7 +129,7 @@ export default async function Home() {
       {/* Cómo funciona */}
       <section className="grid gap-3 md:grid-cols-4">
         {[
-          ["1", "Elegí un lote", "Filtrá por servidor, precio por kk, raza o nivel. Mirá si el vendedor está en línea y sus reseñas."],
+          ["1", "Elegí una oferta", "Filtrá por servidor, precio por kk, raza o nivel. Mirá si el vendedor está en línea y sus reseñas."],
           ["2", "Chateá y pagá", "Consultá lo que necesites por chat antes de comprar. El total se calcula en el servidor."],
           ["3", "Recibí en el juego", "El vendedor entrega por trade o correo y deja evidencia en la orden."],
           ["4", "Confirmá o reclamá", "Confirmás la recepción o abrís un reclamo que resuelve un administrador."],

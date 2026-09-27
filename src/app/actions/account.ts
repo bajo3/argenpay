@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { done, fail, str } from "./helpers";
+import { done, fail, safeNext, str } from "./helpers";
 
 export async function updateProfile(formData: FormData) {
   const s = await requireUser("/cuenta");
@@ -15,14 +15,34 @@ export async function updateProfile(formData: FormData) {
   done("/cuenta", "Perfil actualizado");
 }
 
+/** Guarda la URL pública de la foto de perfil (la base valida que sea del bucket y carpeta propios). */
+export async function setAvatar(url: string): Promise<{ error?: string }> {
+  const s = await requireUser("/cuenta");
+  const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatares/${s.userId}/`;
+  if (typeof url !== "string" || !url.startsWith(base) || url.length > 500) return { error: "Imagen inválida" };
+  const supabase = await createClient();
+  const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", s.userId);
+  if (error) return { error: "No se pudo guardar la foto" };
+  revalidatePath("/", "layout");
+  return {};
+}
+
+export async function removeAvatar(): Promise<void> {
+  const s = await requireUser("/cuenta");
+  const supabase = await createClient();
+  await supabase.from("profiles").update({ avatar_url: null }).eq("id", s.userId);
+  revalidatePath("/", "layout");
+}
+
 export async function activateSeller(formData: FormData) {
-  await requireUser("/cuenta");
-  if (formData.get("acepto_vendedor") !== "on") fail("/cuenta", "Tenés que aceptar las condiciones para vendedores");
+  const next = safeNext(formData.get("siguiente"), "/publicar");
+  await requireUser(next);
+  if (formData.get("acepto_vendedor") !== "on") fail(next, "Tenés que aceptar las condiciones para vendedores");
   const supabase = await createClient();
   const { error } = await supabase.rpc("activate_seller");
-  if (error) fail("/cuenta", error.message);
+  if (error) fail(next, error.message);
   revalidatePath("/", "layout");
-  done("/panel/vendedor", "¡Listo! Ya podés publicar ofertas");
+  done(next, "¡Listo! Ya podés publicar ofertas");
 }
 
 export async function savePayoutAccount(formData: FormData) {

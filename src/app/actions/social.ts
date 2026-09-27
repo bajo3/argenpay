@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { done, fail, str } from "./helpers";
+import { done, fail, safeNext, str } from "./helpers";
 
 /** Abre (o retoma) el chat con otro usuario, opcionalmente sobre un lote. */
 export async function startChat(formData: FormData) {
@@ -27,4 +27,14 @@ export async function leaveReview(formData: FormData) {
   if (error) fail(back, error.message);
   revalidatePath(back);
   done(back, "¡Gracias por tu reseña!");
+}
+
+export async function replyReview(formData: FormData) {
+  const back = safeNext(formData.get("back"), "/");
+  await requireUser(back);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reply_review", { p_review_id: Number(str(formData, "review_id")), p_body: str(formData, "body") });
+  if (error) fail(back, error.message);
+  revalidatePath(back);
+  done(back, "Respuesta publicada");
 }

@@ -85,7 +85,7 @@ export function createSimulatedProvider(): PaymentProvider {
           .from("sim_payouts")
           .upsert(
             {
-              order_id: input.orderId,
+              reference_id: input.orderId,
               seller_id: input.sellerId,
               amount_cents: input.amountCents,
               idempotency_key: input.idempotencyKey,
@@ -99,6 +99,18 @@ export function createSimulatedProvider(): PaymentProvider {
       },
     },
   };
+}
+
+/** Crea un cobro simulado para cargar saldo (no está asociado a una orden). */
+export async function createSimulatedDeposit(userId: string, amountCents: number): Promise<string> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("sim_payments")
+    .insert({ user_id: userId, amount_cents: amountCents, currency: "ARS", purpose: "carga" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id as string;
 }
 
 /** Decide un pago simulado (lo que en un proveedor real hace el comprador en su checkout). */

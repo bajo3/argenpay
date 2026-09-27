@@ -7,6 +7,8 @@ export interface Profile {
   display_name: string;
   is_seller: boolean;
   is_admin: boolean;
+  avatar_url: string | null;
+  created_at: string;
 }
 
 export async function getSessionProfile(): Promise<{ userId: string; email: string | null; profile: Profile } | null> {
@@ -17,7 +19,7 @@ export async function getSessionProfile(): Promise<{ userId: string; email: stri
   if (!user) return null;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, display_name, is_seller, is_admin")
+    .select("id, display_name, is_seller, is_admin, avatar_url, created_at")
     .eq("id", user.id)
     .single();
   if (!profile) return null;

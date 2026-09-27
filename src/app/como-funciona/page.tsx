@@ -17,7 +17,7 @@ export default function HowItWorks() {
       )}
       <div className="card animate-fade-up space-y-3 text-sm leading-relaxed">
         <h2 className="h2">Para compradores</h2>
-        <p>Elegí un lote por servidor (Carmine, Gamma, Black o White). En adena el precio es por <strong>kk</strong> (1.000.000 de adena) y podés elegir cuántos kk comprar.</p>
+        <p>Elegí una oferta por servidor (Carmine, Gamma, Black o White). En adena el precio es por <strong>kk</strong> (1.000.000 de adena) y podés elegir cuántos kk comprar.</p>
         <p>Antes de comprar podés escribirle al vendedor por el chat. Cada orden publica sus avisos en ese mismo chat y guarda un registro de todo lo que pasa.</p>
         <p>Cuando el vendedor marca la entrega, revisá en el juego lo recibido y confirmá la recepción. Si algo no coincide, abrí un reclamo y un administrador lo resuelve. Si no confirmás ni reclamás dentro del plazo indicado, la operación se confirma sola.</p>
       </div>

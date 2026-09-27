@@ -6,7 +6,7 @@ import { LU4_SLUG } from "@/lib/catalog";
 import { RACES } from "@/lib/lu4";
 import { parseARSToCents } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
-import { done, fail, str } from "./helpers";
+import { done, fail, safeNext, str } from "./helpers";
 
 async function parseListing(formData: FormData, back: string) {
   const supabase = await createClient();
@@ -71,13 +71,13 @@ function dbError(msg: string) {
 
 export async function createListing(formData: FormData) {
   const s = await requireUser("/panel/vendedor");
-  const back = "/panel/vendedor/publicaciones/nueva";
+  const back = safeNext(formData.get("back"), "/publicar");
   const values = await parseListing(formData, back);
   const supabase = await createClient();
   const { data, error } = await supabase.from("listings").insert({ ...values, seller_id: s.userId }).select("id").single();
   if (error) fail(back, dbError(error.message));
   revalidatePath("/", "layout");
-  redirect(`/ofertas/${data.id}?ok=${encodeURIComponent("¡Lote publicado!")}`);
+  redirect(`/ofertas/${data.id}?ok=${encodeURIComponent("¡Publicado! Ya está visible en el mercado.")}`);
 }
 
 export async function updateListing(formData: FormData) {
@@ -101,7 +101,7 @@ export async function setListingStatus(formData: FormData) {
   if (!["activa", "pausada", "eliminada"].includes(status)) fail("/panel/vendedor", "Estado inválido");
   const supabase = await createClient();
   const { error } = await supabase.from("listings").update({ status }).eq("id", id);
-  if (error) fail("/panel/vendedor", "No se pudo actualizar la publicación");
+  if (error) fail("/panel/vendedor?tab=ofertas", "No se pudo actualizar la oferta");
   revalidatePath("/panel/vendedor");
-  done("/panel/vendedor", status === "activa" ? "Publicación activada" : status === "pausada" ? "Publicación pausada" : "Publicación eliminada");
+  done("/panel/vendedor?tab=ofertas", status === "activa" ? "Oferta activada" : status === "pausada" ? "Oferta pausada" : "Oferta eliminada");
 }

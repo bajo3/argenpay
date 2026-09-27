@@ -9,7 +9,7 @@ export function InboxList({ conversations, activeId }: { conversations: Conversa
   if (!conversations.length) {
     return (
       <div className="p-6 text-center text-sm text-muted">
-        No tenés conversaciones todavía. Abrí un lote y tocá <strong className="text-ink">Escribir al vendedor</strong>.
+        No tenés conversaciones todavía. Abrí una oferta y tocá <strong className="text-ink">Escribir al vendedor</strong>.
       </div>
     );
   }
@@ -22,9 +22,9 @@ export function InboxList({ conversations, activeId }: { conversations: Conversa
           <li key={c.id}>
             <Link
               href={`/mensajes/${c.id}`}
-              className={`flex items-center gap-3 px-4 py-3 transition hover:bg-white/5 ${active ? "bg-gold/10" : ""}`}
+              className={`flex items-center gap-3 border-l-2 px-4 py-3 transition hover:bg-white/5 ${active ? "border-gold bg-gold/10" : "border-transparent"}`}
             >
-              <Avatar name={name} size={40} online={isOnline(c.other?.last_seen_at)} />
+              <Avatar name={name} url={c.other?.avatar_url} size={42} online={isOnline(c.other?.last_seen_at)} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-2">
                   <span className={`truncate text-sm ${c.unread ? "font-bold text-ink" : "font-medium"}`}>{name}</span>

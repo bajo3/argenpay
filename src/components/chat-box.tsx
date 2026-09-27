@@ -136,12 +136,18 @@ export function ChatBox({
                 <p className="my-3 text-center text-[11px] font-medium tracking-wide text-muted uppercase">{day}</p>
               )}
               {m.kind === "sistema" ? (
-                <div className="my-2 flex justify-center">
+                <div className="my-3 animate-fade-up">
+                  <p className="mb-1 flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-ink">Argenpay</span>
+                    <span className="rounded bg-gold px-1.5 py-px text-[10px] font-bold text-gold-ink uppercase">aviso</span>
+                    <span className="ml-auto text-muted">{timeFmt.format(new Date(m.created_at))}</span>
+                  </p>
                   <Link
                     href={m.order_id ? `/ordenes/${m.order_id}` : "#"}
-                    className="max-w-[90%] rounded-xl border border-gold/25 bg-gold/10 px-3 py-2 text-center text-xs text-gold-2 transition hover:bg-gold/15"
+                    className="flex gap-2.5 rounded-xl border border-gold/25 bg-gold/[0.07] px-3.5 py-2.5 text-sm text-ink/90 transition hover:border-gold/50 hover:bg-gold/10"
                   >
-                    {m.body} <span className="ml-1 text-muted">{timeFmt.format(new Date(m.created_at))}</span>
+                    <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-gold/80 text-[10px] font-bold text-gold-ink">i</span>
+                    <span>{m.body}</span>
                   </Link>
                 </div>
               ) : (

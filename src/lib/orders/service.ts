@@ -103,6 +103,19 @@ export async function refundOrder(orderId: string, userId: string, note: string)
   }
   if (!note.trim()) throw new OrderError("Indicá el motivo del reembolso");
   if (!modeMatches(order) || !order.payment_provider) throw new OrderError("La orden no pertenece al modo de pagos activo");
+
+  // Pagada con saldo: el reembolso vuelve al saldo del comprador.
+  if (order.payment_provider === "saldo") {
+    const db = createAdminClient();
+    const { error } = await db.rpc("sys_refund_to_wallet", {
+      p_order_id: order.id,
+      p_actor_id: userId,
+      p_actor_role: actor,
+      p_note: note.trim(),
+    });
+    if (error) throw new OrderError(error.message);
+    return;
+  }
   const provider = getProviderById(order.payment_provider);
   if (!provider?.refunds) throw new OrderError("El proveedor configurado no admite reembolsos automáticos");
 

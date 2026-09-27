@@ -14,7 +14,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 
 export async function generateMetadata(props: PageProps<"/lotes/[categoria]">): Promise<Metadata> {
   const { categoria } = await props.params;
-  const names: Record<string, string> = { adena: "Adena", cuentas: "Cuentas", items: "Ítems", servicios: "Servicios", todos: "Todos los lotes" };
+  const names: Record<string, string> = { adena: "Adena", cuentas: "Cuentas", items: "Ítems", servicios: "Servicios", todos: "Todas las ofertas" };
   return { title: `${names[categoria] ?? "Lotes"} LU4` };
 }
 
@@ -82,7 +82,7 @@ export default async function LotsPage(props: PageProps<"/lotes/[categoria]">) {
     <div className="space-y-6">
       <div className="animate-fade-up">
         <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">Lineage 2 LU4</p>
-        <h1 className="h1 mt-1">{category?.name ?? "Todos los lotes"}</h1>
+        <h1 className="h1 mt-1">{category?.name ?? "Todas las ofertas"}</h1>
         {category?.description && <p className="mt-1 text-sm text-muted">{category.description}</p>}
       </div>
 
@@ -149,7 +149,7 @@ export default async function LotsPage(props: PageProps<"/lotes/[categoria]">) {
       </AutoForm>
 
       <div className="flex items-center justify-between text-sm text-muted">
-        <span>{count} lote{count === 1 ? "" : "s"}</span>
+        <span>{count} oferta{count === 1 ? "" : "s"}</span>
         {(q || online || raza || nivel || max !== null || servidor) && (
           <Link href={`/lotes/${categoria}`} className="text-gold hover:text-gold-2">Limpiar filtros</Link>
         )}
@@ -158,7 +158,7 @@ export default async function LotsPage(props: PageProps<"/lotes/[categoria]">) {
       {lots.length ? (
         <LotList lots={lots} ratings={ratings} />
       ) : (
-        <EmptyState title="No hay lotes con estos filtros" href="/panel/vendedor/publicaciones/nueva" cta="Publicar un lote">
+        <EmptyState title="No hay ofertas con estos filtros" href="/publicar" cta="Publicar una oferta">
           Probá con otro servidor o quitá filtros. Si tenés {category?.name.toLowerCase() ?? "algo para vender"}, publicalo.
         </EmptyState>
       )}

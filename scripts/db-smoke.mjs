@@ -178,10 +178,11 @@ const order2 = (await as("authenticated", BUYER, () => one(`select create_order(
 await as("service_role", null, () => db.query(`select sys_confirm_payment($1,'simulado','pago-2',2469134,'ARS',null,'{}')`, [order2]));
 await as("authenticated", SELLER, () => db.query(`select order_action($1,'marcar_entregado','Entregado en el juego',null)`, [order2]));
 await as("authenticated", BUYER, () => db.query(`select order_action($1,'confirmar_recepcion',null,null)`, [order2]));
-await as("service_role", null, () => expectError("liquidar un importe distinto al neto", () => db.query(`select sys_record_payout($1,'simulado','p2',1,'{}',$2)`, [order2, ADMIN]), "neto"));
-const o2 = await one(`select seller_net_cents from orders where id=$1`, [order2]);
-await as("service_role", null, () => db.query(`select sys_record_payout($1,'simulado','p2',$2,'{}',$3)`, [order2, o2.seller_net_cents, ADMIN]));
-(await one(`select status from orders where id=$1`, [order2])).status === "liquidado" ? ok("orden liquidada") : bad("no liquidó");
+const o2 = await one(`select status, seller_net_cents from orders where id=$1`, [order2]);
+o2.status === "liquidado" ? ok("al confirmar, la orden simulada se liquida sola") : bad(`estado tras confirmar: ${o2.status}`);
+const credit = await as("authenticated", SELLER, () => one(`select amount_cents from wallet_entries where order_id=$1 and kind='venta'`, [order2]));
+Number(credit?.amount_cents) === Number(o2.seller_net_cents) ? ok("el neto (90%) se acreditó en el saldo del vendedor") : bad("no se acreditó la venta");
+await as("service_role", null, () => expectError("liquidar dos veces", () => db.query(`select sys_record_payout($1,'simulado','p2',$2,'{}',$3)`, [order2, o2.seller_net_cents, ADMIN]), "confirmadas"));
 
 console.log("\nCancelación, vencimiento y confirmación automática");
 const order3 = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'simulado') id`, [listing]))).id;
@@ -259,6 +260,63 @@ rating?.reviews_count === 1 && Number(rating.rating_avg) === 5 ? ok("calificaci�
 await as("authenticated", SELLER, () => db.query(`select touch_presence()`));
 (await one(`select last_seen_at from profiles where id=$1`, [SELLER])).last_seen_at ? ok("presencia en línea registrada") : bad("sin presencia");
 await as("anon", null, () => expectError("anon no puede marcar presencia", () => db.query(`select touch_presence()`), "permission"));
+
+console.log("\nSaldo, retiros, respuestas a reseñas y avatares");
+const wallet = async (uid) => (await as("authenticated", uid, () => one(`select * from my_wallet()`)));
+const sellerBefore = Number((await wallet(SELLER)).available_cents);
+sellerBefore > 0 ? ok(`saldo de la vendedora: $${(sellerBefore / 100).toFixed(2)}`) : bad("vendedora sin saldo");
+await as("authenticated", BUYER, () => expectError("acreditarse saldo a mano", () => db.query(`insert into wallet_entries (user_id, amount_cents, kind) values ($1, 100000, 'carga')`, [BUYER]), "permission"));
+await as("authenticated", BUYER, () => expectError("llamar sys_credit_deposit", () => db.query(`select sys_credit_deposit($1, 100000, 'simulado', 'x')`, [BUYER]), "permission"));
+(await as("service_role", null, () => one(`select sys_credit_deposit($1, 5000000, 'simulado', 'carga-1') r`, [BUYER]))).r === "acreditado" ? ok("carga de saldo verificada: $50.000") : bad("carga");
+(await as("service_role", null, () => one(`select sys_credit_deposit($1, 5000000, 'simulado', 'carga-1') r`, [BUYER]))).r === "duplicado" ? ok("carga repetida → idempotente") : bad("carga duplicada");
+
+await db.exec(`update listings set stock = 100 where id = '${listing}'`);
+const order7 = (await as("authenticated", BUYER, () => one(`select create_order($1, 2, 'simulado') id`, [listing]))).id;
+await as("authenticated", OTHER, () => expectError("pagar orden ajena con saldo", () => db.query(`select pay_order_with_balance($1)`, [order7]), "comprador"));
+await as("authenticated", BUYER, () => db.query(`select pay_order_with_balance($1)`, [order7]));
+const o7 = await one(`select status, paid_with, price_cents from orders where id=$1`, [order7]);
+o7.status === "pago_confirmado" && o7.paid_with === "saldo" ? ok("orden pagada con saldo") : bad(`pago con saldo: ${JSON.stringify(o7)}`);
+Number((await wallet(BUYER)).available_cents) === 5000000 - Number(o7.price_cents) ? ok("se descontó el saldo del comprador") : bad("saldo comprador");
+await as("authenticated", BUYER, () => expectError("pagar dos veces", () => db.query(`select pay_order_with_balance($1)`, [order7]), "pendiente"));
+Number((await wallet(SELLER)).pending_sales_cents) > 0 ? ok("la venta figura como pendiente en el saldo del vendedor") : bad("pendiente vendedor");
+await as("service_role", null, () => db.query(`select sys_refund_to_wallet($1, $2, 'vendedor', 'Sin stock en el juego')`, [order7, SELLER]));
+(await one(`select status from orders where id=$1`, [order7])).status === "reembolsado" && Number((await wallet(BUYER)).available_cents) === 5000000
+  ? ok("reembolso de orden pagada con saldo → vuelve al saldo")
+  : bad("reembolso a saldo");
+
+const big = (await as("authenticated", BUYER, () => one(`select create_order($1, 50, 'simulado') id`, [listing]))).id;
+await as("authenticated", BUYER, () => expectError("saldo insuficiente", () => db.query(`select pay_order_with_balance($1)`, [big]), "insuficiente"));
+
+await as("authenticated", SELLER, () => expectError("retiro sin datos de cobro", () => db.query(`select request_withdrawal(1000)`), "datos de cobro"));
+await as("authenticated", SELLER, () => db.query(`insert into seller_payout_accounts (seller_id, holder_name, tax_id, cbu_or_alias) values ($1, 'Vendedora Test', '20123456789', 'vendedora.test')`, [SELLER]));
+await as("authenticated", SELLER, () => expectError("retirar más que el saldo", () => db.query(`select request_withdrawal($1)`, [sellerBefore + 1]), "insuficiente"));
+const w1 = (await as("authenticated", SELLER, () => one(`select request_withdrawal(100000) id`))).id;
+const sw = await wallet(SELLER);
+Number(sw.available_cents) === sellerBefore - 100000 && Number(sw.pending_withdrawals_cents) === 100000 ? ok("retiro solicitado: se reserva del saldo") : bad(`retiro ${JSON.stringify(sw)}`);
+await as("service_role", null, () => db.query(`select sys_process_withdrawal($1, false, null, 'CBU inválido', $2)`, [w1, ADMIN]));
+Number((await wallet(SELLER)).available_cents) === sellerBefore ? ok("retiro rechazado → el dinero vuelve al saldo") : bad("rechazo retiro");
+const w2 = (await as("authenticated", SELLER, () => one(`select request_withdrawal(50000) id`))).id;
+(await as("service_role", null, () => one(`select sys_process_withdrawal($1, true, 'sim-transfer-1', null, $2) r`, [w2, ADMIN]))).r === "pagado" ? ok("retiro aprobado") : bad("aprobar retiro");
+(await as("service_role", null, () => one(`select sys_process_withdrawal($1, false, null, 'x', $2) r`, [w2, ADMIN]))).r === "ya_procesado" ? ok("un retiro procesado no se reprocesa") : bad("reproceso retiro");
+await as("authenticated", OTHER, () => db.query(`select * from wallet_entries`).then((r) => (r.rows.length === 0 ? ok("terceros no ven movimientos de saldo ajenos") : bad("tercero ve saldo"))));
+
+const orderReal = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'real') id`, [listing]))).id;
+await as("authenticated", BUYER, () => expectError("pago con saldo en modo real", () => db.query(`select pay_order_with_balance($1)`, [orderReal]), "simulado"));
+
+const review = (await as("anon", null, () => one(`select id from reviews where order_id=$1`, [order2]))).id;
+await as("authenticated", BUYER, () => expectError("comprador responde como vendedor", () => db.query(`select reply_review($1, 'hola')`, [review]), "vendedor"));
+await as("authenticated", SELLER, () => db.query(`select reply_review($1, '¡Gracias por la compra!')`, [review]));
+await as("authenticated", SELLER, () => expectError("responder dos veces", () => db.query(`select reply_review($1, 'otra')`, [review]), "Ya respondiste"));
+await as("service_role", null, () => expectError("cambiar la calificación", () => db.query(`update reviews set rating = 1 where id = $1`, [review]), "no se puede modificar"));
+const breakdown = await as("anon", null, () => one(`select r5, r1 from seller_ratings where seller_id=$1`, [SELLER]));
+breakdown.r5 === 1 && breakdown.r1 === 0 ? ok("distribución de estrellas en la calificación pública") : bad("breakdown");
+
+await as("authenticated", SELLER, () => expectError("avatar de otro usuario", () =>
+  db.query(`update profiles set avatar_url = $2 where id = $1`, [SELLER, `https://x.supabase.co/storage/v1/object/public/avatares/${BUYER}/a.png`])));
+await as("authenticated", SELLER, () => expectError("avatar externo", () => db.query(`update profiles set avatar_url = 'https://evil.example/a.png' where id = $1`, [SELLER])));
+await as("authenticated", SELLER, () => db.query(`update profiles set avatar_url = $2 where id = $1`, [SELLER, `https://x.supabase.co/storage/v1/object/public/avatares/${SELLER}/a.png`]).then(() => ok("avatar propio guardado")));
+const codeRow = await one(`select code from orders where id=$1`, [order2]);
+codeRow.code === order2.slice(0, 8).toUpperCase() ? ok(`código de orden buscable: #${codeRow.code}`) : bad("code");
 
 console.log(failures ? `\n${failures} verificaciones fallaron` : "\nTodas las verificaciones pasaron");
 process.exit(failures ? 1 : 0);

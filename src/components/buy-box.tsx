@@ -78,7 +78,7 @@ export function BuyBox({
       <SubmitButton className="btn-primary shine w-full py-3 text-base" pendingText="Creando orden…">
         {loggedIn ? "Comprar" : "Ingresá para comprar"}
       </SubmitButton>
-      <p className="hint text-center">El total definitivo se calcula en el servidor al crear la orden.</p>
+      <p className="hint text-center">El pago se libera al vendedor recién cuando confirmás que recibiste todo.</p>
     </form>
   );
 }

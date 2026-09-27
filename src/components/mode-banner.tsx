@@ -14,7 +14,7 @@ export function ModeBanner() {
           <Link href="/como-funciona" className="underline underline-offset-2">Más info</Link>
         </>
       ) : (
-        <>Las compras están deshabilitadas temporalmente. Podés explorar los lotes y chatear con vendedores.</>
+        <>Las compras están deshabilitadas temporalmente. Podés explorar las ofertas y chatear con vendedores.</>
       )}
     </div>
   );
