@@ -8,7 +8,12 @@ en pesos argentinos. Comisión del 10% por operación. Next.js 16 (App Router) +
   raza, clase y nivel. Filtros por servidor, categoría, precio, raza, nivel y "solo vendedores en línea".
 - Chat entre usuarios en tiempo real (Supabase Realtime + respaldo por consulta). Cada orden publica sus eventos
   como mensajes de sistema en el chat del comprador con el vendedor.
-- Presencia en línea, perfiles públicos de vendedor y reseñas (1–5) después de confirmar la orden.
+- Presencia en línea, perfiles públicos con foto, reseñas (1–5) con respuesta del vendedor y distribución de estrellas.
+- Publicar por tipo (`/publicar/cuenta|adena|item|coins|servicio|otro`), **entrega automática** (ítems que se entregan
+  al confirmarse el pago), **subir ofertas** cada 4 horas y filtros de cuentas (nivel, raza, equipo).
+- **Saldo** (solo modo simulado): carga, pago con saldo, liberación automática del 90% al vendedor cuando el comprador
+  confirma, reembolsos al saldo y retiros aprobados por un administrador.
+- Mis compras / Mis ventas con filtros y exportación CSV, imágenes en el chat, soporte por chat y recuperación de contraseña.
 
 > **Pagos:** el MVP funciona con un proveedor **simulado** (no mueve dinero). La integración con Mercado Pago
 > está implementada parcialmente y **bloqueada por configuración** hasta confirmar con el proveedor que se puede

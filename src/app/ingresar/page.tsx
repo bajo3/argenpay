@@ -20,7 +20,10 @@ export default async function LoginPage(props: PageProps<"/ingresar">) {
           <input id="email" name="email" type="email" required autoComplete="email" className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="password">Contraseña</label>
+          <label className="label flex justify-between" htmlFor="password">
+            <span>Contraseña</span>
+            <Link href="/recuperar" className="text-xs font-normal text-gold hover:text-gold-2">¿Te la olvidaste?</Link>
+          </label>
           <input id="password" name="password" type="password" required autoComplete="current-password" className="input" />
         </div>
         <SubmitButton className="btn-primary w-full" pendingText="Ingresando…">Ingresar</SubmitButton>

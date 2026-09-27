@@ -12,10 +12,13 @@ export function Footer() {
           <Link href="/lotes/adena" className="hover:text-gold-2">Adena</Link>
           <Link href="/lotes/cuentas" className="hover:text-gold-2">Cuentas y personajes</Link>
           <Link href="/lotes/items" className="hover:text-gold-2">Ítems y equipo</Link>
-          <Link href="/lotes/servicios" className="hover:text-gold-2">Servicios</Link>
+          <Link href="/lotes/coins" className="hover:text-gold-2">Coins</Link>
+          <Link href="/lotes/servicios" className="hover:text-gold-2">Boosting y servicios</Link>
+          <Link href="/lotes/otros" className="hover:text-gold-2">Otros</Link>
         </div>
         <div className="flex flex-col gap-1.5">
           <Link href="/como-funciona" className="hover:text-gold-2">Cómo funciona</Link>
+          <Link href="/soporte" className="hover:text-gold-2">Soporte y preguntas frecuentes</Link>
           <Link href="/terminos" className="hover:text-gold-2">Términos (borrador)</Link>
           <p className="text-xs">Sitio independiente. No está afiliado a lu4.org ni a NCSOFT.</p>
         </div>

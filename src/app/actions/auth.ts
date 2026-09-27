@@ -33,6 +33,30 @@ export async function signUp(formData: FormData) {
   redirect("/");
 }
 
+/** Envía el email de recuperación. Siempre responde lo mismo para no revelar si el email existe. */
+export async function requestPasswordReset(formData: FormData) {
+  const email = str(formData, "email");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail("/recuperar", "Ingresá un email válido");
+  const supabase = await createClient();
+  await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl()}/auth/confirmar?siguiente=${encodeURIComponent("/nueva-contrasena")}`,
+  });
+  redirect("/recuperar?ok=" + encodeURIComponent("Si el email está registrado, te llega un enlace en unos minutos. Revisá también spam."));
+}
+
+export async function updatePassword(formData: FormData) {
+  const back = safeNext(formData.get("back"), "/nueva-contrasena");
+  const password = str(formData, "password");
+  if (password.length < 8) fail(back, "La contraseña debe tener al menos 8 caracteres");
+  if (password !== str(formData, "password2")) fail(back, "Las contraseñas no coinciden");
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) redirect(`/ingresar?siguiente=${encodeURIComponent(back)}`);
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) fail(back, error.message.includes("different") ? "La contraseña nueva tiene que ser distinta a la anterior" : "No se pudo cambiar la contraseña");
+  redirect(`/cuenta?ok=${encodeURIComponent("Contraseña actualizada")}`);
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();

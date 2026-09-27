@@ -1,8 +1,37 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PurchaseSteps } from "@/components/purchase-copy";
 import { getPaymentsConfig } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Cómo funciona" };
+
+const BLOCKS: { title: string; items: string[] }[] = [
+  {
+    title: "Para compradores",
+    items: [
+      "Elegí una oferta por servidor (Carmine, Gamma, Black o White). La adena se vende por kk (1.000.000 de adena) y elegís cuántos kk comprar.",
+      "Antes de comprar podés escribirle al vendedor. Cada orden publica sus avisos en ese mismo chat y guarda un registro de todo lo que pasa.",
+      "Pagás con tu saldo de Argenpay o con el procesador. Las ofertas con ⚡ entrega automática te muestran lo comprado al instante.",
+      "Revisá en el juego lo recibido y tocá “Recibí todo”: recién ahí se libera el pago al vendedor. Si algo no coincide, abrí un reclamo y un administrador lo resuelve.",
+    ],
+  },
+  {
+    title: "Para vendedores",
+    items: [
+      "Tocá + Publicar y elegí cuenta, adena, ítem, coins, servicio u otro. Indicá precio por unidad, disponibilidad, compra mínima y tiempo de entrega.",
+      "Con entrega automática cargás lo que entregás (uno por línea) y cada comprador recibe su ítem apenas paga.",
+      "Cuando el comprador confirma, el 90% del precio entra a tu saldo (Argenpay cobra 10% de comisión). Después pedís el retiro a tu CBU/CVU o alias.",
+      "Subí tus ofertas cada 4 horas para aparecer primero en el listado y cuidá tus reseñas: son lo primero que miran los compradores.",
+    ],
+  },
+  {
+    title: "Seguridad",
+    items: [
+      "Nunca compartas contraseñas de tu email ni códigos de verificación por el chat.",
+      "Entregá solo cuando la orden figure como Pago confirmado. No aceptes pagos por fuera de Argenpay: fuera de la plataforma no hay reclamos.",
+    ],
+  },
+];
 
 export default function HowItWorks() {
   const cfg = getPaymentsConfig();
@@ -11,26 +40,27 @@ export default function HowItWorks() {
       <h1 className="h1 animate-fade-up">Cómo funciona Argenpay LU4</h1>
       {cfg.mode === "simulado" && (
         <div className="rounded-xl border border-gold/25 bg-warn-bg p-4 text-sm text-warn-ink">
-          Estás en un <strong>entorno simulado</strong>. Todo el circuito (pago, entrega, reclamo, reembolso y liquidación) se
-          puede probar de punta a punta, pero ningún importe es real.
+          Estás en un <strong>entorno simulado</strong>. Todo el circuito (pago, saldo, entrega, reclamo, reembolso, liberación y
+          retiro) se puede probar de punta a punta, pero ningún importe es real.
         </div>
       )}
-      <div className="card animate-fade-up space-y-3 text-sm leading-relaxed">
-        <h2 className="h2">Para compradores</h2>
-        <p>Elegí una oferta por servidor (Carmine, Gamma, Black o White). En adena el precio es por <strong>kk</strong> (1.000.000 de adena) y podés elegir cuántos kk comprar.</p>
-        <p>Antes de comprar podés escribirle al vendedor por el chat. Cada orden publica sus avisos en ese mismo chat y guarda un registro de todo lo que pasa.</p>
-        <p>Cuando el vendedor marca la entrega, revisá en el juego lo recibido y confirmá la recepción. Si algo no coincide, abrí un reclamo y un administrador lo resuelve. Si no confirmás ni reclamás dentro del plazo indicado, la operación se confirma sola.</p>
-      </div>
-      <div className="card animate-fade-up space-y-3 text-sm leading-relaxed" style={{ "--i": 1 } as React.CSSProperties}>
-        <h2 className="h2">Para vendedores</h2>
-        <p>Activá tu perfil de vendedor y publicá con precio por unidad, disponibilidad, compra mínima, tiempo de entrega y condiciones. Para cuentas podés indicar raza, clase y nivel.</p>
-        <p>Cuando una orden tiene el pago confirmado, coordiná por el chat y entregá por trade, correo o tienda privada. Marcá la entrega con evidencia (captura). Argenpay cobra una comisión del 10% sobre cada operación concretada.</p>
-      </div>
-      <div className="card animate-fade-up space-y-3 text-sm leading-relaxed" style={{ "--i": 2 } as React.CSSProperties}>
-        <h2 className="h2">Seguridad</h2>
-        <p>Nunca compartas tu contraseña de cuenta ni códigos de verificación por el chat. Hacé las entregas solo después de ver la orden como <strong>Pago confirmado</strong>.</p>
-      </div>
+      {BLOCKS.map((b, i) => (
+        <section key={b.title} className="card animate-fade-up space-y-3" style={{ "--i": i } as React.CSSProperties}>
+          <h2 className="h2">{b.title}</h2>
+          <ol className="space-y-2">
+            {b.items.map((t, j) => (
+              <li key={t} className="flex gap-3 text-sm leading-relaxed text-muted">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-gold/40 text-xs font-bold text-gold-2">{j + 1}</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
       <PurchaseSteps />
+      <p className="text-center text-sm text-muted">
+        ¿Te quedó alguna duda? <Link href="/soporte" className="text-gold hover:text-gold-2">Escribinos a soporte</Link>
+      </p>
     </div>
   );
 }

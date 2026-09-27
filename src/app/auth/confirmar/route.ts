@@ -11,10 +11,13 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
   const code = searchParams.get("code");
+  const next = searchParams.get("siguiente") ?? "";
+  const safeNext = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
   const supabase = await createClient();
 
   const destination = (t: EmailOtpType | null) => {
-    if (t === "recovery") return `${origin}/cuenta?ok=${encodeURIComponent("Ingresaste con el enlace de recuperación. Cambiá tu contraseña.")}`;
+    if (safeNext) return `${origin}${safeNext}`;
+    if (t === "recovery") return `${origin}/nueva-contrasena`;
     if (t === "email_change") return `${origin}/cuenta?ok=${encodeURIComponent("Email actualizado")}`;
     return `${origin}/?ok=${encodeURIComponent("¡Cuenta confirmada!")}`;
   };

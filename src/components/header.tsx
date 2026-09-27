@@ -126,6 +126,7 @@ export async function Header() {
                   {wallet && <Link href="/saldo" className={menuItem}>Saldo</Link>}
                   <Link href={`/vendedores/${p.id}`} className={menuItem}>Mi perfil público</Link>
                   <Link href="/cuenta" className={menuItem}>Configuración</Link>
+                  <Link href="/soporte" className={menuItem}>Soporte</Link>
                   {p.is_admin && <Link href="/admin" className={`${menuItem} text-gold`}>Administración</Link>}
                   <div className="my-1 border-t border-line xl:hidden" />
                   <div className="xl:hidden">

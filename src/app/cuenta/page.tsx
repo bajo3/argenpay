@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { savePayoutAccount, updateProfile } from "@/app/actions/account";
 import { AvatarUploader } from "@/components/avatar-uploader";
+import { PasswordForm } from "@/components/password-form";
 import { SellerGate } from "@/components/seller-gate";
 import { Stars } from "@/components/seller-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -53,6 +54,11 @@ export default async function AccountPage(props: PageProps<"/cuenta">) {
           <SubmitButton>Guardar</SubmitButton>
         </form>
         <Link href={`/vendedores/${s.userId}`} className="inline-block text-sm text-gold hover:text-gold-2">Ver mi perfil público y reseñas →</Link>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="h2">Cambiar contraseña</h2>
+        <PasswordForm back="/cuenta" />
       </section>
 
       {!s.profile.is_seller ? (
