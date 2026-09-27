@@ -56,6 +56,16 @@ const checks = {
   retiros: db.from("withdrawals").select("id, amount_cents, status, destination, admin_note, created_at, processed_at").eq("user_id", uuid),
   retiros_admin: db.from("withdrawals").select("id, amount_cents, destination, created_at, user:profiles!withdrawals_user_id_fkey(display_name)").eq("status", "pendiente"),
   resenas_perfil: db.from("reviews").select("id, rating, body, created_at, seller_reply, seller_reply_at, buyer:profiles!reviews_buyer_id_fkey(display_name, avatar_url), order:orders(listing_snapshot)").eq("seller_id", uuid).limit(5),
+  lotes_mecanicas: db
+    .from("listings")
+    .select("id, char_equipment, auto_delivery, bumped_at, seller:profiles!listings_seller_id_fkey!inner(id, created_at)")
+    .eq("auto_delivery", true)
+    .eq("char_equipment", "equipado")
+    .lte("char_level", 80)
+    .order("bumped_at", { ascending: false })
+    .limit(1),
+  entrega_automatica: db.from("listing_delivery_items").select("id, content, order_id, delivered_at").eq("listing_id", uuid),
+  mensajes_adjuntos: db.from("conversation_messages").select("id, attachment_path").eq("conversation_id", uuid),
   perfil_avatar: db.from("profiles").select("id, display_name, is_seller, is_admin, avatar_url, created_at").eq("id", uuid).maybeSingle(),
 };
 

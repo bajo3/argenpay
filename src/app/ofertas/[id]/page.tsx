@@ -18,6 +18,7 @@ interface Listing {
   id: string; seller_id: string; title: string; description: string; conditions: string;
   price_cents: number; stock: number; min_quantity: number; delivery_time_hours: number; status: string; created_at: string;
   char_race: string | null; char_class: string | null; char_level: number | null;
+  char_equipment: string | null; auto_delivery: boolean;
   seller: { id: string; display_name: string; created_at: string; last_seen_at: string | null; avatar_url: string | null } | null;
   category: { name: string; slug: string; unit_label: string; unit_label_plural: string } | null;
   server: { name: string } | null;
@@ -40,7 +41,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
   const { data } = await supabase
     .from("listings")
     .select(
-      "id, seller_id, title, description, conditions, price_cents, stock, min_quantity, delivery_time_hours, status, created_at, char_race, char_class, char_level, " +
+      "id, seller_id, title, description, conditions, price_cents, stock, min_quantity, delivery_time_hours, status, created_at, char_race, char_class, char_level, char_equipment, auto_delivery, " +
         "seller:profiles!listings_seller_id_fkey(id, display_name, created_at, last_seen_at, avatar_url), category:categories(name, slug, unit_label, unit_label_plural), server:game_servers(name)",
     )
     .eq("id", id)
@@ -68,11 +69,12 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
     ["Servidor", l.server?.name ?? "Todos"],
     ["Categoría", l.category?.name ?? "—"],
     ["Disponible", formatQty(l.stock, unit, plural)],
-    ["Entrega estimada", deliveryLabel(l.delivery_time_hours)],
+    ["Entrega", l.auto_delivery ? "⚡ Automática" : `~${deliveryLabel(l.delivery_time_hours)}`],
     ...(l.min_quantity > 1 ? [["Compra mínima", formatQty(l.min_quantity, unit, plural)]] : []),
     ...(l.char_race ? [["Raza", raceLabel(l.char_race) ?? l.char_race]] : []),
     ...(l.char_class ? [["Clase", l.char_class]] : []),
     ...(l.char_level ? [["Nivel", String(l.char_level)]] : []),
+    ...(l.char_equipment ? [["Equipo", l.char_equipment === "equipado" ? "Equipado" : "Desnudo"]] : []),
   ];
 
   return (

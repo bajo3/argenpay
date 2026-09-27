@@ -8,7 +8,9 @@ const OPTIONS = [
   { href: "/publicar/cuenta", title: "Publicar cuenta", desc: "Personajes con raza, clase, nivel y equipo.", icon: "♜" },
   { href: "/publicar/adena", title: "Publicar adena", desc: "Vendé por kk, con compra mínima y entrega por servidor.", icon: "◈" },
   { href: "/publicar/item", title: "Publicar ítem", desc: "Armas, armaduras, joyas, recetas y materiales.", icon: "⚔" },
-  { href: "/publicar/servicio", title: "Publicar servicio", desc: "Leveo, quests de profesión, farm o acompañamiento.", icon: "✦" },
+  { href: "/publicar/coins", title: "Publicar coins", desc: "Moneda de donación del servidor.", icon: "◉" },
+  { href: "/publicar/servicio", title: "Publicar servicio", desc: "Boosting, leveo, quests de profesión, farm o acompañamiento.", icon: "✦" },
+  { href: "/publicar/otro", title: "Publicar otro", desc: "Todo lo que no entra en las demás categorías.", icon: "✚" },
 ];
 
 export default async function PublishIndex(props: PageProps<"/publicar">) {
@@ -20,7 +22,7 @@ export default async function PublishIndex(props: PageProps<"/publicar">) {
         <h1 className="h1 mt-1">¿Qué querés vender?</h1>
       </div>
       <Flash error={sp.error} ok={sp.ok} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {OPTIONS.map((o, i) => (
           <Link key={o.href} href={o.href} className="card card-hover animate-fade-up group flex items-start gap-4 p-6" style={{ "--i": i } as React.CSSProperties}>
             <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-gold/30 bg-gold/10 text-2xl text-gold-2 transition group-hover:scale-110 group-hover:rotate-6">

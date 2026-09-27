@@ -6,7 +6,7 @@ import { getCatalog, getRatings, LOT_SELECT, type LotRow } from "@/lib/catalog";
 import { formatARS } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
 
-const CATEGORY_ICON: Record<string, string> = { adena: "◈", cuentas: "♜", items: "⚔", servicios: "✦" };
+const CATEGORY_ICON: Record<string, string> = { adena: "◈", cuentas: "♜", items: "⚔", servicios: "✦", coins: "◉", otros: "✚" };
 
 export default async function Home() {
   const { game, servers, categories } = await getCatalog();
@@ -86,7 +86,7 @@ export default async function Home() {
       {/* Categorías */}
       <section>
         <h2 className="h2 mb-4 text-xl">¿Qué buscás?</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((c, i) => {
             const rows = byCategory(c.id);
             const min = rows.length ? Math.min(...rows.map((r) => Number(r.price_cents))) : null;

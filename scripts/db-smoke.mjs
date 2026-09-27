@@ -81,8 +81,8 @@ const ref = await one(`select
   (select id from categories where slug='adena') category`);
 const catalog = await one(`select (select count(*)::int from game_servers s join games g on g.id=s.game_id where g.slug='lineage-2-lu4') servers,
   (select count(*)::int from categories) categories`);
-catalog.servers === 4 && catalog.categories === 4
-  ? ok("catálogo LU4: 4 servidores, 4 categorías")
+catalog.servers === 4 && catalog.categories === 6
+  ? ok("catálogo LU4: 4 servidores, 6 categorías")
   : bad(`catálogo inesperado ${JSON.stringify(catalog)}`);
 
 console.log("\nPerfiles y publicaciones");
@@ -317,6 +317,42 @@ await as("authenticated", SELLER, () => expectError("avatar externo", () => db.q
 await as("authenticated", SELLER, () => db.query(`update profiles set avatar_url = $2 where id = $1`, [SELLER, `https://x.supabase.co/storage/v1/object/public/avatares/${SELLER}/a.png`]).then(() => ok("avatar propio guardado")));
 const codeRow = await one(`select code from orders where id=$1`, [order2]);
 codeRow.code === order2.slice(0, 8).toUpperCase() ? ok(`código de orden buscable: #${codeRow.code}`) : bad("code");
+
+console.log("\nEntrega automática, subir ofertas y adjuntos");
+const cats = await one(`select (select count(*)::int from categories) n, (select id from categories where slug='coins') coins`);
+cats.n === 6 && cats.coins ? ok("categorías Coins y Otros agregadas (6 en total)") : bad(`categorías ${JSON.stringify(cats)}`);
+const auto = (await as("authenticated", SELLER, () =>
+  one(`insert into listings (seller_id, game_id, server_id, category_id, title, description, price_cents, stock, delivery_time_hours)
+       values ($1, $2, $3, $4, 'Cuenta auto LU4', 'Se entrega sola al pagar', 250000, 0, 1) returning id`, [SELLER, ref.game, ref.server, ref.category]))).id;
+await as("authenticated", BUYER, () => expectError("cargar ítems en oferta ajena", () => db.query(`select add_delivery_items($1, array['x'])`, [auto]), "vendedor"));
+(await as("authenticated", SELLER, () => one(`select add_delivery_items($1, array['user: a1 / pass: p1', '  ', 'user: a2 / pass: p2']) n`, [auto]))).n === 2
+  ? ok("vendedor carga 2 ítems (ignora líneas vacías)")
+  : bad("add_delivery_items");
+const autoL = await one(`select stock, auto_delivery from listings where id=$1`, [auto]);
+autoL.stock === 2 && autoL.auto_delivery ? ok("stock = ítems cargados y entrega automática activa") : bad(`stock auto ${JSON.stringify(autoL)}`);
+await as("authenticated", BUYER, () => db.query(`select * from listing_delivery_items where listing_id=$1`, [auto]).then((r) => (r.rows.length === 0 ? ok("el comprador no ve los ítems antes de comprar") : bad("comprador ve ítems"))));
+const order9 = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'simulado') id`, [auto]))).id;
+await as("authenticated", BUYER, () => db.query(`select pay_order_with_balance($1)`, [order9]));
+const o9 = await one(`select status, auto_confirm_at from orders where id=$1`, [order9]);
+o9.status === "entregado" && o9.auto_confirm_at ? ok("al pagar, la orden se entregó sola") : bad(`auto entrega: ${JSON.stringify(o9)}`);
+const got = await as("authenticated", BUYER, () => db.query(`select content from listing_delivery_items where order_id=$1`, [order9]));
+got.rows.length === 1 && got.rows[0].content === "user: a1 / pass: p1" ? ok("el comprador ve solo el ítem que compró") : bad(`ítems comprador ${JSON.stringify(got.rows)}`);
+await as("authenticated", OTHER, () => db.query(`select * from listing_delivery_items where order_id=$1`, [order9]).then((r) => (r.rows.length === 0 ? ok("terceros no ven el contenido entregado") : bad("tercero ve ítems"))));
+const delivered = (await as("authenticated", SELLER, () => one(`select id from listing_delivery_items where order_id=$1`, [order9]))).id;
+await as("authenticated", SELLER, () => expectError("borrar ítem ya entregado", () => db.query(`select remove_delivery_item($1)`, [delivered]), "entregado"));
+const spare = (await as("authenticated", SELLER, () => one(`select id from listing_delivery_items where listing_id=$1 and order_id is null`, [auto]))).id;
+await as("authenticated", SELLER, () => db.query(`select remove_delivery_item($1)`, [spare]));
+(await one(`select stock from listings where id=$1`, [auto])).stock === 0 ? ok("quitar ítem baja el stock") : bad("stock tras quitar");
+
+await as("authenticated", SELLER, () => expectError("cambiar bumped_at a mano", () => db.query(`update listings set bumped_at = now() + interval '1 day' where id = $1`, [auto]), "Subir ofertas"));
+await as("authenticated", SELLER, () => expectError("subir antes de 4 horas", () => db.query(`select bump_listings($1)`, [ref.category]), "volver a subir"));
+await db.exec(`update listings set bumped_at = now() - interval '5 hours' where seller_id = '${SELLER}'`);
+(await as("authenticated", SELLER, () => one(`select bump_listings($1) n`, [ref.category]))).n >= 1 ? ok("subir ofertas después de 4 horas") : bad("bump");
+
+const convA = (await as("authenticated", BUYER, () => one(`select id from conversations where user_low = least($1::uuid,$2::uuid) and user_high = greatest($1::uuid,$2::uuid)`, [BUYER, SELLER]))).id;
+await as("authenticated", BUYER, () => db.query(`insert into conversation_messages (conversation_id, sender_id, body, attachment_path) values ($1,$2,'',$3)`, [convA, BUYER, `${convA}/captura.png`]).then(() => ok("mensaje solo con imagen adjunta")));
+await as("authenticated", BUYER, () => expectError("adjunto de otra conversación", () => db.query(`insert into conversation_messages (conversation_id, sender_id, body, attachment_path) values ($1,$2,'x',$3)`, [convA, BUYER, `${conv2}/x.png`])));
+await as("authenticated", BUYER, () => expectError("mensaje vacío sin adjunto", () => db.query(`insert into conversation_messages (conversation_id, sender_id, body) values ($1,$2,'   ')`, [convA, BUYER])));
 
 console.log(failures ? `\n${failures} verificaciones fallaron` : "\nTodas las verificaciones pasaron");
 process.exit(failures ? 1 : 0);

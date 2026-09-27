@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 export interface ChatMessage {
@@ -10,7 +11,34 @@ export interface ChatMessage {
   body: string;
   order_id: string | null;
   listing_id: string | null;
+  attachment_path?: string | null;
   created_at: string;
+}
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+/** Imagen adjunta: se pide una URL firmada temporal (el bucket es privado). */
+function Attachment({ supabase, path }: { supabase: SupabaseClient; path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void supabase.storage
+      .from("chat")
+      .createSignedUrl(path, 3600)
+      .then(({ data }) => {
+        if (alive) setUrl(data?.signedUrl ?? null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [supabase, path]);
+  if (!url) return <span className="block h-40 w-56 skeleton" />;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+      {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada temporal de Storage */}
+      <img src={url} alt="Imagen adjunta" className="max-h-64 max-w-full rounded-lg object-contain" loading="lazy" />
+    </a>
+  );
 }
 
 const timeFmt = new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
@@ -42,6 +70,7 @@ export function ChatBox({
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const lastId = useRef(initial.at(-1)?.id ?? 0);
 
   const add = useCallback((incoming: ChatMessage[]) => {
@@ -80,7 +109,7 @@ export function ChatBox({
     const poll = setInterval(async () => {
       const { data } = await supabase
         .from("conversation_messages")
-        .select("id, sender_id, kind, body, order_id, listing_id, created_at")
+        .select("id, sender_id, kind, body, order_id, listing_id, attachment_path, created_at")
         .eq("conversation_id", conversationId)
         .gt("id", lastId.current)
         .order("id");
@@ -103,6 +132,29 @@ export function ChatBox({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
+  async function sendImage(file: File) {
+    if (!IMAGE_TYPES.includes(file.type)) return setError("Solo imágenes PNG, JPG, WEBP o GIF.");
+    if (file.size > 5 * 1024 * 1024) return setError("La imagen supera los 5 MB.");
+    setSending(true);
+    setError(null);
+    const ext = file.type.split("/")[1].replace("jpeg", "jpg");
+    const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("chat").upload(path, file, { contentType: file.type });
+    if (upErr) {
+      setSending(false);
+      return setError("No se pudo subir la imagen.");
+    }
+    const { data, error: err } = await supabase
+      .from("conversation_messages")
+      .insert({ conversation_id: conversationId, sender_id: me, body: text.trim(), attachment_path: path, listing_id: listingHint?.id ?? null })
+      .select("id, sender_id, kind, body, order_id, listing_id, attachment_path, created_at")
+      .single();
+    setSending(false);
+    if (err) return setError("No se pudo enviar la imagen.");
+    setText("");
+    add([data as ChatMessage]);
+  }
+
   async function send() {
     const body = text.trim();
     if (!body || sending) return;
@@ -112,7 +164,7 @@ export function ChatBox({
     const { data, error: err } = await supabase
       .from("conversation_messages")
       .insert({ conversation_id: conversationId, sender_id: me, body, listing_id: listingHint?.id ?? null })
-      .select("id, sender_id, kind, body, order_id, listing_id, created_at")
+      .select("id, sender_id, kind, body, order_id, listing_id, attachment_path, created_at")
       .single();
     setSending(false);
     if (err) return setError("No se pudo enviar el mensaje. Probá de nuevo.");
@@ -160,7 +212,12 @@ export function ChatBox({
                     }`}
                   >
                     {!mine && <p className="mb-0.5 text-[11px] font-semibold text-gold">{names[m.sender_id ?? ""] ?? "Administración"}</p>}
-                    <p className="break-words whitespace-pre-line">{m.body}</p>
+                    {m.attachment_path && (
+                      <div className="mb-1">
+                        <Attachment supabase={supabase} path={m.attachment_path} />
+                      </div>
+                    )}
+                    {m.body && <p className="break-words whitespace-pre-line">{m.body}</p>}
                     <p className={`mt-0.5 text-right text-[10px] ${mine ? "text-gold-ink/60" : "text-muted"}`}>
                       {timeFmt.format(new Date(m.created_at))}
                     </p>
@@ -180,6 +237,29 @@ export function ChatBox({
         )}
         {error && <p className="mb-2 text-xs text-bad">{error}</p>}
         <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={sending}
+            className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-xl border border-line text-muted transition hover:border-gold/50 hover:text-gold-2"
+            aria-label="Adjuntar imagen"
+            title="Adjuntar imagen"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M21 11.5l-8.6 8.6a5 5 0 01-7.1-7.1l8.6-8.6a3.3 3.3 0 014.7 4.7l-8.6 8.6a1.7 1.7 0 01-2.4-2.4l7.9-7.9" strokeLinecap="round" />
+            </svg>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={IMAGE_TYPES.join(",")}
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void sendImage(f);
+              e.target.value = "";
+            }}
+          />
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

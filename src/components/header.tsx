@@ -9,15 +9,19 @@ import { Avatar } from "./seller-badge";
 const CATEGORIES = [
   { href: "/lotes/adena", label: "Adena" },
   { href: "/lotes/cuentas", label: "Cuentas" },
+  { href: "/lotes/coins", label: "Coins" },
   { href: "/lotes/items", label: "Ítems" },
-  { href: "/lotes/servicios", label: "Servicios" },
+  { href: "/lotes/servicios", label: "Boosting" },
+  { href: "/lotes/otros", label: "Otros" },
 ];
 
 export const PUBLISH_OPTIONS = [
   { href: "/publicar/cuenta", label: "Publicar cuenta", icon: "♜" },
   { href: "/publicar/adena", label: "Publicar adena", icon: "◈" },
   { href: "/publicar/item", label: "Publicar ítem", icon: "⚔" },
+  { href: "/publicar/coins", label: "Publicar coins", icon: "◉" },
   { href: "/publicar/servicio", label: "Publicar servicio", icon: "✦" },
+  { href: "/publicar/otro", label: "Publicar otro", icon: "✚" },
 ];
 
 export function Logo() {

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { computeOrderAmounts, type ProcessorFeePolicy } from "@/lib/fees";
-import { CLASSES, RACES } from "@/lib/lu4";
+import { CLASSES, EQUIPMENT, RACES } from "@/lib/lu4";
 import { formatARS, parseARSToCents } from "@/lib/money";
 import { SubmitButton } from "./submit-button";
 
@@ -19,6 +19,7 @@ interface Props {
     id: string; title: string; description: string; conditions: string; price: string; stock: number; min_quantity: number;
     delivery_time_hours: number; server_id: string | null; category_id: string;
     char_race: string | null; char_class: string | null; char_level: number | null;
+    char_equipment: string | null; auto_delivery: boolean;
   };
 }
 
@@ -27,11 +28,16 @@ const PLACEHOLDERS: Record<string, { title: string; description: string }> = {
   cuentas: { title: "Archmage 76 · full A · con subclase", description: "Detalle de equipo, skills, quests hechas, clan, estado de la cuenta y cómo se transfiere." },
   items: { title: "Arma A grado +6", description: "Nombre exacto del ítem, encantamiento, SA, cantidad y forma de entrega." },
   servicios: { title: "Leveo 40→61 en 3 días", description: "Qué incluye el servicio, horarios, requisitos y qué necesitás darme." },
+  coins: { title: "Coins Carmine · entrega inmediata", description: "Cantidad, cómo se transfieren y en qué horario entregás." },
+  otros: { title: "Clan nivel 5 con hall", description: "Qué vendés exactamente y cómo se entrega." },
 };
 
 export function ListingForm({ action, servers, categories, fees, initial, fixedCategoryId, backPath }: Props) {
   const [categoryId, setCategoryId] = useState(fixedCategoryId ?? initial?.category_id ?? categories[0]?.id ?? "");
   const [price, setPrice] = useState(initial?.price ?? "");
+  const [autoDelivery, setAutoDelivery] = useState(initial?.auto_delivery ?? false);
+  const [items, setItems] = useState("");
+  const itemCount = items.split(/\r?\n/).filter((l) => l.trim()).length;
   const category = categories.find((c) => c.id === categoryId);
   const slug = category?.slug ?? "adena";
   const unit = category?.unit_label ?? "unidad";
@@ -67,8 +73,8 @@ export function ListingForm({ action, servers, categories, fees, initial, fixedC
       </section>
 
       {slug === "cuentas" && (
-        <section className="card animate-fade-up grid gap-4 sm:grid-cols-3">
-          <h2 className="h2 sm:col-span-3">Personaje</h2>
+        <section className="card animate-fade-up grid gap-4 sm:grid-cols-4">
+          <h2 className="h2 sm:col-span-4">Personaje</h2>
           <div>
             <label className="label" htmlFor="char_race">Raza</label>
             <select id="char_race" name="char_race" defaultValue={initial?.char_race ?? ""} className="input">
@@ -84,6 +90,13 @@ export function ListingForm({ action, servers, categories, fees, initial, fixedC
           <div>
             <label className="label" htmlFor="char_level">Nivel</label>
             <input id="char_level" name="char_level" type="number" min={1} max={99} defaultValue={initial?.char_level ?? ""} className="input" />
+          </div>
+          <div>
+            <label className="label" htmlFor="char_equipment">Equipo</label>
+            <select id="char_equipment" name="char_equipment" defaultValue={initial?.char_equipment ?? ""} className="input">
+              <option value="">—</option>
+              {EQUIPMENT.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+            </select>
           </div>
         </section>
       )}
@@ -114,7 +127,11 @@ export function ListingForm({ action, servers, categories, fees, initial, fixedC
           </div>
           <div>
             <label className="label" htmlFor="stock">Disponible ({plural})</label>
-            <input id="stock" name="stock" type="number" min={0} max={10000000} defaultValue={initial?.stock ?? (slug === "adena" ? 1000 : 1)} required className="input" />
+            {autoDelivery ? (
+              <p className="input flex items-center text-muted">{initial ? initial.stock : itemCount} (según ítems cargados)</p>
+            ) : (
+              <input id="stock" name="stock" type="number" min={0} max={10000000} defaultValue={initial?.stock ?? (slug === "adena" ? 1000 : 1)} required className="input" />
+            )}
           </div>
           <div>
             <label className="label" htmlFor="min_quantity">Compra mínima</label>
@@ -138,8 +155,42 @@ export function ListingForm({ action, servers, categories, fees, initial, fixedC
         )}
       </section>
 
+      {!initial && (
+        <section className="card space-y-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              name="auto_delivery"
+              checked={autoDelivery}
+              onChange={(e) => setAutoDelivery(e.target.checked)}
+              className="mt-1 accent-[var(--gold)]"
+            />
+            <span>
+              <span className="font-semibold">⚡ Entrega automática</span>
+              <span className="block text-sm text-muted">
+                Cargá lo que entregás (códigos, datos de acceso, instrucciones), uno por línea. Cuando se confirma el pago,
+                el comprador lo recibe al instante en la orden y la venta queda marcada como entregada.
+              </span>
+            </span>
+          </label>
+          {autoDelivery && (
+            <div className="animate-fade-up">
+              <textarea
+                name="delivery_items"
+                value={items}
+                onChange={(e) => setItems(e.target.value)}
+                rows={5}
+                className="input font-mono text-xs"
+                placeholder={"usuario: cuenta1 / clave: ****\nusuario: cuenta2 / clave: ****"}
+              />
+              <p className="hint">{itemCount} ítem{itemCount === 1 ? "" : "s"} · cada línea se entrega a un comprador y solo él la ve.</p>
+            </div>
+          )}
+        </section>
+      )}
+
       <SubmitButton className="btn-primary shine px-8 py-3 text-base" pendingText="Guardando…">
-        {initial ? "Guardar cambios" : `Publicar ${slug === "adena" ? "adena" : slug === "cuentas" ? "cuenta" : slug === "items" ? "ítem" : "servicio"}`}
+        {initial ? "Guardar cambios" : `Publicar ${({ adena: "adena", cuentas: "cuenta", items: "ítem", servicios: "servicio", coins: "coins", otros: "oferta" } as Record<string, string>)[slug] ?? "oferta"}`}
       </SubmitButton>
     </form>
   );

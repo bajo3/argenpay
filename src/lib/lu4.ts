@@ -10,6 +10,11 @@ export const RACES = [
 
 export type Race = (typeof RACES)[number]["value"];
 
+export const EQUIPMENT = [
+  { value: "desnudo", label: "Desnudo" },
+  { value: "equipado", label: "Equipado" },
+] as const;
+
 export function raceLabel(value: string | null | undefined): string | null {
   return RACES.find((r) => r.value === value)?.label ?? null;
 }
@@ -49,6 +54,20 @@ export function lastSeenLabel(lastSeenAt: string | null | undefined, now = Date.
   if (hours < 24) return `Visto hace ${hours} h`;
   const days = Math.round(hours / 24);
   return `Visto hace ${days} día${days === 1 ? "" : "s"}`;
+}
+
+/** Antigüedad corta de una cuenta: "3 años", "5 meses", "12 días". */
+export function accountAge(createdAt: string, now = Date.now()): string {
+  const days = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 86400000));
+  if (days >= 365) {
+    const y = Math.floor(days / 365);
+    return `${y} año${y === 1 ? "" : "s"}`;
+  }
+  if (days >= 30) {
+    const m = Math.floor(days / 30);
+    return `${m} mes${m === 1 ? "" : "es"}`;
+  }
+  return days <= 1 ? "nuevo" : `${days} días`;
 }
 
 const intFmt = new Intl.NumberFormat("es-AR");

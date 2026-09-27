@@ -44,7 +44,7 @@ export async function getMessages(conversationId: string): Promise<ChatMessage[]
   const supabase = await createClient();
   const { data } = await supabase
     .from("conversation_messages")
-    .select("id, sender_id, kind, body, order_id, listing_id, created_at")
+    .select("id, sender_id, kind, body, order_id, listing_id, attachment_path, created_at")
     .eq("conversation_id", conversationId)
     .order("id", { ascending: false })
     .limit(200);

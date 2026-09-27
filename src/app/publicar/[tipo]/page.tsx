@@ -13,7 +13,9 @@ const TIPOS: Record<string, { slug: string; title: string }> = {
   cuenta: { slug: "cuentas", title: "Publicar cuenta" },
   adena: { slug: "adena", title: "Publicar adena" },
   item: { slug: "items", title: "Publicar ítem" },
+  coins: { slug: "coins", title: "Publicar coins" },
   servicio: { slug: "servicios", title: "Publicar servicio" },
+  otro: { slug: "otros", title: "Publicar otro" },
 };
 
 export async function generateMetadata(props: PageProps<"/publicar/[tipo]">): Promise<Metadata> {

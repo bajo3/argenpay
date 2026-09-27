@@ -71,12 +71,13 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   if (!data) notFound(); // RLS: solo participantes y admins
   const o = data as unknown as Order;
 
-  const [events, evidence, dispute, review, conversationId] = await Promise.all([
+  const [events, evidence, dispute, review, conversationId, autoItems] = await Promise.all([
     supabase.from("order_events").select("id, actor_role, event_type, from_status, to_status, note, created_at").eq("order_id", id).order("id"),
     supabase.from("delivery_evidence").select("id, description, file_path, created_at").eq("order_id", id).order("id"),
     supabase.from("disputes").select("reason, status, resolution, resolution_note, created_at, resolved_at").eq("order_id", id).maybeSingle(),
     supabase.from("reviews").select("id, rating, body, created_at, seller_reply").eq("order_id", id).maybeSingle(),
     findConversation(o.buyer_id, o.seller_id),
+    supabase.from("listing_delivery_items").select("id, content, delivered_at").eq("order_id", id).order("id"),
   ]);
   const [messages, wallet] = await Promise.all([
     conversationId ? getMessages(conversationId) : Promise.resolve([]),
@@ -254,6 +255,22 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
               </div>
             )}
           </section>
+
+          {(autoItems.data ?? []).length > 0 && (
+            <section className="card animate-fade-up border-gold/40">
+              <h2 className="h2">⚡ Contenido entregado</h2>
+              <p className="mt-1 text-sm text-muted">
+                {role === "comprador" ? "Esto es lo que compraste. Cambiá las contraseñas apenas ingreses y confirmá la recepción si todo está bien." : "Entregado automáticamente al comprador."}
+              </p>
+              <ul className="mt-3 space-y-2">
+                {(autoItems.data ?? []).map((it) => (
+                  <li key={it.id} className="rounded-xl border border-line bg-bg-2 p-3">
+                    <pre className="font-mono text-sm break-all whitespace-pre-wrap text-gold-2 select-all">{it.content}</pre>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {dispute.data && (
             <section className="card border-crimson/40">

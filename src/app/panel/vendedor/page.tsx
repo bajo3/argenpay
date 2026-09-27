@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { setListingStatus } from "@/app/actions/listings";
+import { bumpListings, setListingStatus } from "@/app/actions/listings";
 import { PUBLISH_OPTIONS } from "@/components/header";
 import { OrdersFilters, OrdersHistory } from "@/components/orders-history";
 import { SellerGate } from "@/components/seller-gate";
@@ -37,7 +37,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
     listMyOrders(s.userId, "vendedor", values),
     supabase
       .from("listings")
-      .select("id, title, price_cents, stock, status, server:game_servers(name), category:categories(name, unit_label, unit_label_plural)")
+      .select("id, title, price_cents, stock, status, auto_delivery, bumped_at, category_id, server:game_servers(name), category:categories(name, unit_label, unit_label_plural)")
       .eq("seller_id", s.userId)
       .neq("status", "eliminada")
       .order("created_at", { ascending: false }),
@@ -45,7 +45,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
     supabase.from("seller_payout_accounts").select("seller_id").eq("seller_id", s.userId).maybeSingle(),
   ]);
   const listings = (listingsRes.data ?? []) as unknown as {
-    id: string; title: string; price_cents: number; stock: number; status: string;
+    id: string; title: string; price_cents: number; stock: number; status: string; auto_delivery: boolean; bumped_at: string; category_id: string;
     server: { name: string } | null; category: { name: string; unit_label: string; unit_label_plural: string } | null;
   }[];
   const toDeliver = orders.filter((o) => ["pago_confirmado", "entrega_en_curso"].includes(o.status)).length;
@@ -113,6 +113,19 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
           <OrdersHistory rows={orders} role="vendedor" />
         </section>
       ) : listings.length ? (
+        <div className="space-y-4">
+        <div className="card flex flex-wrap items-center gap-3 p-4">
+          <div className="mr-auto">
+            <p className="font-semibold">Subir ofertas</p>
+            <p className="text-xs text-muted">Pone tus ofertas activas primeras en el listado de esa categoría. Podés hacerlo cada 4 horas.</p>
+          </div>
+          {[...new Map(listings.filter((l) => l.status === "activa").map((l) => [l.category_id, l])).values()].map((l) => (
+            <form key={l.category_id} action={bumpListings}>
+              <input type="hidden" name="category_id" value={l.category_id} />
+              <SubmitButton className="btn-ghost px-3 py-2 text-sm" pendingText="Subiendo…">↑ {l.category?.name}</SubmitButton>
+            </form>
+          ))}
+        </div>
         <div className="overflow-x-auto rounded-2xl border border-line bg-surface/80">
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-surface-2/60 text-left text-xs tracking-wide text-muted uppercase">
@@ -122,7 +135,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
               {listings.map((l) => (
                 <tr key={l.id} className="border-t border-line hover:bg-gold/[0.04]">
                   <td className="px-4 py-3">
-                    <Link href={`/ofertas/${l.id}`} className="font-medium hover:text-gold-2">{l.title}</Link>
+                    <Link href={`/ofertas/${l.id}`} className="font-medium hover:text-gold-2">{l.auto_delivery && <span className="mr-1 text-gold-2" title="Entrega automática">⚡</span>}{l.title}</Link>
                     <p className="text-xs text-muted">{l.server?.name ?? "Todos"} · {l.category?.name}</p>
                   </td>
                   <td className="px-4 py-3">{formatARS(Number(l.price_cents))}<span className="text-xs text-muted">/{l.category?.unit_label}</span></td>
@@ -151,6 +164,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       ) : (
         <EmptyState title="Todavía no publicaste ofertas" href="/publicar" cta="Publicar ahora" />

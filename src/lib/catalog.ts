@@ -32,8 +32,8 @@ export async function getCatalog() {
 }
 
 export const LOT_SELECT =
-  "id, title, price_cents, stock, min_quantity, delivery_time_hours, created_at, char_race, char_class, char_level, seller_id, " +
-  "seller:profiles!listings_seller_id_fkey!inner(id, display_name, last_seen_at, avatar_url), " +
+  "id, title, price_cents, stock, min_quantity, delivery_time_hours, created_at, char_race, char_class, char_level, char_equipment, auto_delivery, bumped_at, seller_id, " +
+  "seller:profiles!listings_seller_id_fkey!inner(id, display_name, last_seen_at, avatar_url, created_at), " +
   "category:categories(slug, name, unit_label, unit_label_plural), server:game_servers(id, name)";
 
 export interface LotRow {
@@ -47,8 +47,11 @@ export interface LotRow {
   char_race: string | null;
   char_class: string | null;
   char_level: number | null;
+  char_equipment: "desnudo" | "equipado" | null;
+  auto_delivery: boolean;
+  bumped_at: string;
   seller_id: string;
-  seller: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null };
+  seller: { id: string; display_name: string; last_seen_at: string | null; avatar_url: string | null; created_at: string };
   category: { slug: string; name: string; unit_label: string; unit_label_plural: string } | null;
   server: { id: string; name: string } | null;
 }
