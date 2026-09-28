@@ -202,7 +202,9 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                   )}
                   <SubmitButton
                     className={t.action === "abrir_reclamo" || t.action === "cancelar" ? "btn-danger" : "btn-primary shine"}
-                    confirm={t.action === "confirmar_recepcion" ? "¿Confirmás que recibiste todo lo acordado en el juego? Se libera el pago al vendedor y no se puede deshacer." : undefined}
+                    confirm={t.action === "confirmar_recepcion" ? "Confirmá solo si ya recibiste en el juego todo lo acordado. Se libera el pago al vendedor y no se puede deshacer." : undefined}
+                    confirmTitle="¿Recibiste todo?"
+                    confirmLabel="Sí, recibí todo"
                   >
                     {t.action === "confirmar_recepcion" ? "Recibí todo · liberar pago al vendedor" : t.label}
                   </SubmitButton>
@@ -217,7 +219,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                   {role === "vendedor" ? "¿No podés entregar? Devolvé el dinero al comprador." : "Reembolso total al comprador"}
                 </p>
                 <textarea name="note" required rows={2} className="input" placeholder="Motivo del reembolso" />
-                <SubmitButton className="btn-danger" confirm="¿Reembolsar el total al comprador? No se puede deshacer.">
+                <SubmitButton className="btn-danger" danger confirmTitle="Reembolsar la orden" confirmLabel="Sí, reembolsar" confirm="Se devuelve el total al comprador. No se puede deshacer.">
                   Reembolsar {formatARS(Number(o.price_cents))}
                 </SubmitButton>
               </form>
@@ -309,7 +311,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
               {conversationId && <Link href={`/mensajes/${conversationId}`} className="text-sm text-gold hover:text-gold-2">Abrir en Mensajes →</Link>}
             </div>
             {conversationId ? (
-              <ChatBox conversationId={conversationId} me={s.userId} names={names} initial={messages} height="h-[420px]" />
+              <ChatBox conversationId={conversationId} me={s.userId} names={names} initial={messages} height="h-[55vh] min-h-[420px]" />
             ) : (
               <p className="card text-sm text-muted">El chat no está disponible para esta orden.</p>
             )}

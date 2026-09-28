@@ -254,6 +254,8 @@ await as("authenticated", BUYER, () => expectError("reseñar orden no confirmada
 await as("authenticated", SELLER, () => expectError("vendedor se autoreseña", () => db.query(`select leave_review($1, 5, 'x')`, [order2]), "comprador"));
 await as("authenticated", BUYER, () => db.query(`select leave_review($1, 5, 'Rápido y confiable')`, [order2]));
 await as("authenticated", BUYER, () => expectError("reseñar dos veces", () => db.query(`select leave_review($1, 1, 'x')`, [order2]), "Ya calificaste"));
+const reviewMsg = await as("authenticated", SELLER, () => one(`select body from conversation_messages where kind='sistema' and order_id=$1 and body like '%reseña%' order by id desc limit 1`, [order2]));
+reviewMsg?.body.includes("★★★★★ (5/5)") ? ok("el vendedor recibe aviso de la reseña en el chat") : bad(`sin aviso de reseña: ${reviewMsg?.body}`);
 const rating = await as("anon", null, () => one(`select reviews_count, rating_avg from seller_ratings where seller_id=$1`, [SELLER]));
 rating?.reviews_count === 1 && Number(rating.rating_avg) === 5 ? ok("calificación pública del vendedor: 5,0 (1)") : bad(`rating ${JSON.stringify(rating)}`);
 
@@ -306,6 +308,8 @@ await as("authenticated", BUYER, () => expectError("pago con saldo en modo real"
 const review = (await as("anon", null, () => one(`select id from reviews where order_id=$1`, [order2]))).id;
 await as("authenticated", BUYER, () => expectError("comprador responde como vendedor", () => db.query(`select reply_review($1, 'hola')`, [review]), "vendedor"));
 await as("authenticated", SELLER, () => db.query(`select reply_review($1, '¡Gracias por la compra!')`, [review]));
+(await as("authenticated", BUYER, () => one(`select count(*)::int n from conversation_messages where kind='sistema' and order_id=$1 and body like '%respondió tu reseña%'`, [order2]))).n === 1
+  ? ok("el comprador recibe aviso de la respuesta a su reseña") : bad("sin aviso de respuesta");
 await as("authenticated", SELLER, () => expectError("responder dos veces", () => db.query(`select reply_review($1, 'otra')`, [review]), "Ya respondiste"));
 await as("service_role", null, () => expectError("cambiar la calificación", () => db.query(`update reviews set rating = 1 where id = $1`, [review]), "no se puede modificar"));
 const breakdown = await as("anon", null, () => one(`select r5, r1 from seller_ratings where seller_id=$1`, [SELLER]));

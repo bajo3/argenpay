@@ -126,7 +126,7 @@ export default async function AdminPage(props: PageProps<"/admin">) {
                     <input type="hidden" name="order_id" value={d.order_id} />
                     <input type="hidden" name="back" value="admin" />
                     <textarea name="note" required rows={2} className="input" placeholder="Motivo del reembolso" />
-                    <SubmitButton className="btn-danger" confirm="¿Reembolsar el total al comprador?">Reembolsar al comprador</SubmitButton>
+                    <SubmitButton className="btn-danger" danger confirmLabel="Sí, reembolsar" confirm="Se devuelve el total al comprador.">Reembolsar al comprador</SubmitButton>
                   </form>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requestWithdrawal, startDeposit } from "@/app/actions/wallet";
+import { MoneyInput } from "@/components/money-input";
 import { SubmitButton } from "@/components/submit-button";
 import { EmptyState, Flash, formatDate, shortId } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -69,15 +70,8 @@ export default async function WalletPage(props: PageProps<"/saldo">) {
         <form action={startDeposit} className="card animate-fade-up space-y-3">
           <h2 className="h2">Cargar saldo</h2>
           <p className="text-sm text-muted">Cargá saldo para pagar tus compras al instante.</p>
-          <div className="flex flex-wrap gap-2">
-            {["5.000", "10.000", "25.000", "50.000"].map((v) => (
-              <span key={v} className="chip px-2.5 py-1 text-xs">$ {v}</span>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input name="amount" inputMode="decimal" required placeholder="Importe, ej: 10.000" className="input" aria-label="Importe a cargar" />
-            <SubmitButton className="btn-primary shine shrink-0" pendingText="…">Cargar</SubmitButton>
-          </div>
+          <MoneyInput name="amount" label="Importe a cargar" required placeholder="10.000,00" presets={[500_000, 1_000_000, 2_500_000, 5_000_000]} />
+          <SubmitButton className="btn-primary shine w-full" pendingText="Abriendo checkout…">Cargar saldo</SubmitButton>
           <p className="hint">Vas al checkout del procesador (simulado) para aprobar la carga.</p>
         </form>
 
@@ -93,9 +87,9 @@ export default async function WalletPage(props: PageProps<"/saldo">) {
               Primero cargá tu CBU/CVU o alias en <Link href="/cuenta" className="text-gold hover:text-gold-2">Mi cuenta</Link>.
             </p>
           )}
-          <div className="flex gap-2">
-            <input name="amount" inputMode="decimal" required placeholder={`Hasta ${formatARS(w.available)}`} className="input" aria-label="Importe a retirar" />
-            <SubmitButton className="btn-ghost shrink-0" pendingText="…" confirm="¿Solicitar el retiro? El importe se reserva de tu saldo hasta que se procese.">
+          <div className="flex items-start gap-2">
+            <MoneyInput name="amount" label="Importe a retirar" required max={w.available} placeholder={`Hasta ${formatARS(w.available).replace("$", "").trim()}`} className="flex-1" />
+            <SubmitButton className="btn-ghost shrink-0" pendingText="…" confirmTitle="¿Solicitar el retiro?" confirmLabel="Sí, retirar" confirm="El importe se reserva de tu saldo hasta que un administrador procese la transferencia.">
               Retirar
             </SubmitButton>
           </div>

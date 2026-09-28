@@ -2,11 +2,10 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { removeAvatar, setAvatar } from "@/app/actions/account";
+import { compressImage, ImageError } from "@/lib/image";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "./seller-badge";
 
-const MAX_BYTES = 2 * 1024 * 1024;
-const TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 /** Sube la foto de perfil al bucket público "avatares" en la carpeta del usuario. */
 export function AvatarUploader({ userId, name, url }: { userId: string; name: string; url: string | null }) {
@@ -16,11 +15,17 @@ export function AvatarUploader({ userId, name, url }: { userId: string; name: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onFile(file: File) {
+  async function onFile(original: File) {
     setError(null);
-    if (!TYPES.includes(file.type)) return setError("Formato no permitido. Usá PNG, JPG, WEBP o GIF.");
-    if (file.size > MAX_BYTES) return setError("La imagen supera los 2 MB.");
     setBusy(true);
+    let file: File;
+    try {
+      // Cualquier foto (aunque pese varios MB) se achica a 512 px y menos de 1 MB antes de subirla.
+      file = await compressImage(original, { maxSide: 512, maxBytes: 1024 * 1024 });
+    } catch (e) {
+      setBusy(false);
+      return setError(e instanceof ImageError ? e.message : "No pudimos procesar la imagen.");
+    }
     setPreview(URL.createObjectURL(file));
     const supabase = createClient();
     const ext = file.type.split("/")[1].replace("jpeg", "jpg");
@@ -73,13 +78,13 @@ export function AvatarUploader({ userId, name, url }: { userId: string; name: st
             </button>
           )}
         </div>
-        <p className="hint">PNG, JPG, WEBP o GIF · máximo 2 MB. Se ve en tus ofertas, chats y reseñas.</p>
+        <p className="hint">PNG, JPG, WEBP o GIF. Si es pesada la achicamos automáticamente. Se ve en tus ofertas, chats y reseñas.</p>
         {error && <p className="text-xs text-bad">{error}</p>}
       </div>
       <input
         ref={input}
         type="file"
-        accept={TYPES.join(",")}
+        accept="image/*"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

@@ -2,9 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import { getSessionProfile } from "@/lib/auth";
-import { formatARS } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
 import { getMyWallet } from "@/lib/wallet";
+import { HeaderLive } from "./header-live";
 import { Avatar } from "./seller-badge";
 
 const CATEGORIES = [
@@ -49,7 +49,7 @@ export async function Header() {
   let wallet = null;
   if (p) {
     const supabase = await createClient();
-    const [, res, w] = await Promise.all([supabase.rpc("touch_presence"), supabase.rpc("unread_conversations"), getMyWallet()]);
+    const [res, w] = await Promise.all([supabase.rpc("unread_conversations"), getMyWallet()]);
     unread = Number(res.data ?? 0);
     wallet = w;
   }
@@ -92,21 +92,7 @@ export async function Header() {
                 <Link href="/panel/comprador" className={navLink}>Compras</Link>
                 <Link href="/panel/vendedor" className={navLink}>Ventas</Link>
               </nav>
-              <Link href="/mensajes" className="relative rounded-lg p-2 text-muted transition hover:bg-white/5 hover:text-gold-2" aria-label="Mensajes">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M4 5h16v11H8l-4 4V5z" strokeLinejoin="round" />
-                </svg>
-                {unread > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-crimson px-1 text-[10px] font-bold text-white">
-                    {unread > 9 ? "9+" : unread}
-                  </span>
-                )}
-              </Link>
-              {wallet && (
-                <Link href="/saldo" className="hidden rounded-lg border border-gold/25 bg-gold/5 px-2.5 py-1.5 text-sm font-semibold text-gold-2 transition hover:bg-gold/15 sm:block" title="Tu saldo (simulado)">
-                  {formatARS(wallet.available)}
-                </Link>
-              )}
+              <HeaderLive userId={p.id} initialUnread={unread} initialBalance={wallet ? wallet.available : null} />
               <details className="group relative">
                 <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-white/5 [&::-webkit-details-marker]:hidden">
                   <Avatar name={p.display_name} url={p.avatar_url} size={30} />
@@ -117,13 +103,12 @@ export async function Header() {
                     <Avatar name={p.display_name} url={p.avatar_url} size={36} />
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{p.display_name}</p>
-                      {wallet && <p className="text-xs text-gold-2">Saldo {formatARS(wallet.available)}</p>}
                     </div>
                   </div>
                   <div className="my-1 border-t border-line" />
                   <Link href="/panel/comprador" className={menuItem}>Mis compras</Link>
                   <Link href="/panel/vendedor" className={menuItem}>Mis ventas y ofertas</Link>
-                  <Link href="/mensajes" className={menuItem}>Mensajes {unread > 0 && <span className="ml-1 rounded-full bg-crimson px-1.5 text-[10px] text-white">{unread}</span>}</Link>
+                  <Link href="/mensajes" className={menuItem}>Mensajes</Link>
                   {wallet && <Link href="/saldo" className={menuItem}>Saldo</Link>}
                   <Link href={`/vendedores/${p.id}`} className={menuItem}>Mi perfil público</Link>
                   <Link href="/cuenta" className={menuItem}>Configuración</Link>

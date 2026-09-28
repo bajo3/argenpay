@@ -13,12 +13,12 @@ export default async function InboxPage(props: PageProps<"/mensajes">) {
   return (
     <div className="space-y-4">
       <Flash error={sp.error} ok={sp.ok} />
-      <div className="grid overflow-hidden rounded-2xl border border-line bg-surface/80 md:grid-cols-[320px_1fr]">
-        <div className="max-h-[78vh] overflow-y-auto md:border-r md:border-line">
-          <p className="border-b border-line px-4 py-4 font-display text-xl font-bold">Mensajes</p>
+      <div className="relative left-1/2 grid h-[calc(100dvh-11rem)] min-h-[500px] w-[min(calc(100vw-2rem),90rem)] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-surface/80 lg:h-[calc(100dvh-9rem)] md:grid-cols-[360px_1fr]">
+        <div className="min-h-0 overflow-y-auto md:border-r md:border-line">
+          <p className="sticky top-0 z-10 border-b border-line bg-surface/95 px-4 py-4 font-display text-xl font-bold backdrop-blur">Mensajes</p>
           <InboxList conversations={conversations} />
         </div>
-        <div className="hidden min-h-[60vh] place-items-center p-10 text-center text-sm text-muted md:grid">
+        <div className="hidden place-items-center p-10 text-center text-sm text-muted md:grid">
           <div>
             <span className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full border border-gold/30 bg-gold/10 text-2xl text-gold-2 animate-glow">💬</span>
             <p className="font-display text-lg text-ink">Elegí una conversación</p>

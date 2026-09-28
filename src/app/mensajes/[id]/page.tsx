@@ -59,15 +59,15 @@ export default async function ConversationPage(props: PageProps<"/mensajes/[id]"
   return (
     <div className="space-y-4">
       <Flash error={sp.error} ok={sp.ok} />
-      <div className="grid overflow-hidden rounded-2xl border border-line bg-surface/80 lg:grid-cols-[290px_1fr] xl:grid-cols-[290px_1fr_250px]">
+      <div className="relative left-1/2 grid h-[calc(100dvh-11rem)] min-h-[500px] w-[min(calc(100vw-2rem),90rem)] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-surface/80 lg:h-[calc(100dvh-9rem)] lg:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_270px]">
         {/* Conversaciones */}
-        <aside className="hidden max-h-[78vh] overflow-y-auto border-r border-line lg:block">
-          <p className="border-b border-line px-4 py-4 font-display text-xl font-bold">Mensajes</p>
+        <aside className="hidden min-h-0 overflow-y-auto border-r border-line lg:block">
+          <p className="sticky top-0 z-10 border-b border-line bg-surface/95 px-4 py-4 font-display text-xl font-bold backdrop-blur">Mensajes</p>
           <InboxList conversations={conversations} activeId={id} />
         </aside>
 
         {/* Chat */}
-        <section className="flex min-w-0 flex-col">
+        <section className="flex min-h-0 min-w-0 flex-col">
           <div className="flex items-center gap-3 border-b border-line px-4 py-3">
             <Link href="/mensajes" className="btn-ghost px-3 py-2 lg:hidden" aria-label="Volver">←</Link>
             {other && (
@@ -80,20 +80,20 @@ export default async function ConversationPage(props: PageProps<"/mensajes/[id]"
               </Link>
             )}
           </div>
-          <div className="p-3 sm:p-4">
+          <div className="min-h-0 flex-1">
             <ChatBox
+              fill
               conversationId={id}
               me={s.userId}
               names={names}
               initial={messages}
-              height="h-[58vh] min-h-[360px]"
               listingHint={listingRes.data ? { id: listingRes.data.id, title: listingRes.data.title } : null}
             />
           </div>
         </section>
 
         {/* Info del otro usuario */}
-        <aside className="hidden space-y-5 border-l border-line p-5 text-sm xl:block">
+        <aside className="hidden min-h-0 space-y-5 overflow-y-auto border-l border-line p-5 text-sm xl:block">
           {other && (
             <>
               <div>

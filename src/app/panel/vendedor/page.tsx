@@ -156,7 +156,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
                       <form action={setListingStatus}>
                         <input type="hidden" name="id" value={l.id} />
                         <input type="hidden" name="status" value="eliminada" />
-                        <SubmitButton className="btn-danger px-3 py-1.5" confirm="¿Eliminar esta oferta?">Eliminar</SubmitButton>
+                        <SubmitButton className="btn-danger px-3 py-1.5" danger confirmTitle="¿Eliminar esta oferta?" confirmLabel="Sí, eliminar" confirm="La oferta deja de verse en el mercado.">Eliminar</SubmitButton>
                       </form>
                     </div>
                   </td>

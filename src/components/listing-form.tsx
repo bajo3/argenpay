@@ -122,7 +122,10 @@ export function ListingForm({ action, servers, categories, fees, initial, fixedC
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="price">Precio por {unit} (ARS)</label>
-            <input id="price" name="price" value={price} onChange={(e) => setPrice(e.target.value)} required inputMode="decimal" placeholder={slug === "adena" ? "Ej: 45,00" : "Ej: 15.000"} className="input" />
+            <div className="relative">
+              <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 font-semibold text-gold-2">$</span>
+              <input id="price" name="price" value={price} onChange={(e) => setPrice(e.target.value)} required inputMode="decimal" placeholder={slug === "adena" ? "45,00" : "15.000,00"} className="input pl-8 font-semibold tabular-nums" />
+            </div>
             {slug === "adena" && <p className="hint">1 kk = 1.000.000 de adena.</p>}
           </div>
           <div>

@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { compressImage, ImageError } from "@/lib/image";
 import { createClient } from "@/lib/supabase/client";
+import { COUNTERS_EVENT } from "./header-live";
 
 export interface ChatMessage {
   id: number;
@@ -55,6 +57,7 @@ export function ChatBox({
   initial,
   height = "h-[60vh] min-h-[380px]",
   listingHint,
+  fill = false,
 }: {
   conversationId: string;
   me: string;
@@ -62,6 +65,8 @@ export function ChatBox({
   initial: ChatMessage[];
   height?: string;
   listingHint?: { id: string; title: string } | null;
+  /** Ocupa todo el alto del contenedor (página de mensajes), sin marco propio. */
+  fill?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [messages, setMessages] = useState<ChatMessage[]>(initial);
@@ -83,8 +88,10 @@ export function ChatBox({
     });
   }, []);
 
-  const markRead = useCallback(() => {
-    void supabase.rpc("mark_conversation_read", { p_conversation_id: conversationId });
+  // Marca leída y avisa al encabezado para que baje el contador de no leídos al instante.
+  const markRead = useCallback(async () => {
+    await supabase.rpc("mark_conversation_read", { p_conversation_id: conversationId });
+    window.dispatchEvent(new Event(COUNTERS_EVENT));
   }, [supabase, conversationId]);
 
   // Tiempo real + respaldo
@@ -97,16 +104,21 @@ export function ChatBox({
         { event: "INSERT", schema: "public", table: "conversation_messages", filter: `conversation_id=eq.${conversationId}` },
         (payload) => {
           add([payload.new as ChatMessage]);
-          markRead();
+          void markRead();
         },
       );
+    let isLive = false;
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (data.session) await supabase.realtime.setAuth(data.session.access_token);
-      if (!cancelled) channel.subscribe((status) => setLive(status === "SUBSCRIBED"));
+      if (!cancelled)
+        channel.subscribe((status) => {
+          isLive = status === "SUBSCRIBED";
+          setLive(isLive);
+        });
     })();
 
-    const poll = setInterval(async () => {
+    const fetchNew = async () => {
       const { data } = await supabase
         .from("conversation_messages")
         .select("id, sender_id, kind, body, order_id, listing_id, attachment_path, created_at")
@@ -115,14 +127,26 @@ export function ChatBox({
         .order("id");
       if (data?.length) {
         add(data as ChatMessage[]);
-        markRead();
+        void markRead();
       }
-    }, 8000);
+    };
+    // Respaldo: cada 3 s si el tiempo real no conectó, cada 15 s si está conectado.
+    let ticks = 0;
+    const poll = setInterval(() => {
+      ticks++;
+      if (document.visibilityState !== "visible") return;
+      if (!isLive || ticks % 5 === 0) void fetchNew();
+    }, 3000);
+    const onVisible = () => document.visibilityState === "visible" && void fetchNew();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
-    markRead();
+    void markRead();
     return () => {
       cancelled = true;
       clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       void supabase.removeChannel(channel);
     };
   }, [supabase, conversationId, add, markRead]);
@@ -132,11 +156,21 @@ export function ChatBox({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
-  async function sendImage(file: File) {
-    if (!IMAGE_TYPES.includes(file.type)) return setError("Solo imágenes PNG, JPG, WEBP o GIF.");
-    if (file.size > 5 * 1024 * 1024) return setError("La imagen supera los 5 MB.");
+  async function sendImage(original: File) {
     setSending(true);
     setError(null);
+    let file: File;
+    try {
+      // Las fotos pesadas se achican solas (máx. 1600 px y 2 MB) antes de subirlas.
+      file = await compressImage(original, { maxSide: 1600, maxBytes: 2 * 1024 * 1024 });
+    } catch (e) {
+      setSending(false);
+      return setError(e instanceof ImageError ? e.message : "No pudimos procesar la imagen.");
+    }
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setSending(false);
+      return setError("Formato de imagen no soportado.");
+    }
     const ext = file.type.split("/")[1].replace("jpeg", "jpg");
     const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("chat").upload(path, file, { contentType: file.type });
@@ -173,8 +207,8 @@ export function ChatBox({
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface/80">
-      <div ref={listRef} className={`${height} space-y-2 overflow-y-auto px-3 py-4 sm:px-5`}>
+    <div className={fill ? "flex h-full min-h-0 flex-col" : "flex flex-col overflow-hidden rounded-2xl border border-line bg-surface/80"}>
+      <div ref={listRef} className={`${fill ? "min-h-0 flex-1" : height} space-y-2 overflow-y-auto px-3 py-4 sm:px-6`}>
         {messages.length === 0 && (
           <p className="py-10 text-center text-sm text-muted">Todavía no hay mensajes. ¡Escribí el primero!</p>
         )}
@@ -252,7 +286,7 @@ export function ChatBox({
           <input
             ref={fileRef}
             type="file"
-            accept={IMAGE_TYPES.join(",")}
+            accept="image/*"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -263,6 +297,13 @@ export function ChatBox({
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const img = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+              if (img) {
+                e.preventDefault();
+                void sendImage(img);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -271,7 +312,7 @@ export function ChatBox({
             }}
             rows={1}
             maxLength={2000}
-            placeholder="Escribí un mensaje… (Enter para enviar)"
+            placeholder="Escribí un mensaje… (Enter envía · pegá una imagen con Ctrl+V)"
             className="input max-h-40 min-h-[42px] resize-none"
             aria-label="Mensaje"
           />

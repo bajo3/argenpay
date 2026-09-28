@@ -297,3 +297,12 @@ body {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--gold), transparent);
 }
+
+/* Campana de mensajes: sacudida al llegar algo nuevo */
+@keyframes ring {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-14deg); }
+  40% { transform: rotate(12deg); }
+  60% { transform: rotate(-8deg); }
+  80% { transform: rotate(5deg); }
+}

@@ -1,5 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export interface Profile {
@@ -11,20 +12,23 @@ export interface Profile {
   created_at: string;
 }
 
-export async function getSessionProfile(): Promise<{ userId: string; email: string | null; profile: Profile } | null> {
+/**
+ * Sesión + perfil, una sola vez por request (el encabezado y la página comparten el resultado).
+ * getClaims verifica el JWT localmente con la clave pública del proyecto (sin ida y vuelta a Auth).
+ */
+export const getSessionProfile = cache(async (): Promise<{ userId: string; email: string | null; profile: Profile } | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, display_name, is_seller, is_admin, avatar_url, created_at")
-    .eq("id", user.id)
+    .eq("id", claims.sub)
     .single();
   if (!profile) return null;
-  return { userId: user.id, email: user.email ?? null, profile: profile as Profile };
-}
+  return { userId: claims.sub, email: typeof claims.email === "string" ? claims.email : null, profile: profile as Profile };
+});
 
 export async function requireUser(next = "/") {
   const s = await getSessionProfile();

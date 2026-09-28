@@ -23,9 +23,9 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims refresca la sesión si hace falta y valida el JWT localmente (claves asimétricas).
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ?? null;
 
   const path = request.nextUrl.pathname;
   const isPrivate = ["/panel", "/ordenes", "/cuenta", "/admin", "/simulador", "/mensajes", "/saldo", "/publicar/", "/nueva-contrasena"].some((p) => path.startsWith(p));

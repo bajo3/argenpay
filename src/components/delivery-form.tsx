@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { orderAction } from "@/app/actions/orders";
+import { compressImage, ImageError } from "@/lib/image";
 import { createClient } from "@/lib/supabase/client";
 import { SubmitButton } from "./submit-button";
 
@@ -10,10 +11,18 @@ export function DeliveryForm({ orderId }: { orderId: string }) {
 
   async function submit(fd: FormData) {
     setError(null);
-    const file = fd.get("file");
+    let file = fd.get("file");
     fd.delete("file");
     if (file instanceof File && file.size > 0) {
-      if (file.size > 5 * 1024 * 1024) return setError("El archivo supera los 5 MB");
+      if (file.type !== "application/pdf") {
+        try {
+          file = await compressImage(file, { maxSide: 2000, maxBytes: 3 * 1024 * 1024, keepGif: false });
+        } catch (e) {
+          return setError(e instanceof ImageError ? e.message : "No pudimos procesar la imagen");
+        }
+      } else if (file.size > 5 * 1024 * 1024) {
+        return setError("El PDF supera los 5 MB");
+      }
       const ext = (file.name.split(".").pop() ?? "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
       const path = `${orderId}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await createClient().storage.from("evidencias").upload(path, file, { contentType: file.type });
@@ -35,7 +44,7 @@ export function DeliveryForm({ orderId }: { orderId: string }) {
       </div>
       <div>
         <label className="label" htmlFor="file">Captura o comprobante (opcional)</label>
-        <input id="file" name="file" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="text-sm" />
+        <input id="file" name="file" type="file" accept="image/*,application/pdf" className="text-sm" />
       </div>
       {error && <p className="text-sm text-bad">{error}</p>}
       <SubmitButton pendingText="Enviando…">Marcar como entregado</SubmitButton>

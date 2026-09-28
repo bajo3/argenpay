@@ -1,4 +1,6 @@
 import "server-only";
+import { createClient as createAnonClient } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 export const LU4_SLUG = "lineage-2-lu4";
@@ -9,26 +11,42 @@ export interface Category {
   id: string; slug: string; name: string; description: string; unit_label: string; unit_label_plural: string;
 }
 
-/** Catálogo LU4: juego, servidores y categorías. */
-export async function getCatalog() {
-  const supabase = await createClient();
-  const [game, categories] = await Promise.all([
-    supabase.from("games").select("id, slug, name").eq("slug", LU4_SLUG).single(),
-    supabase.from("categories").select("id, slug, name, description, unit_label, unit_label_plural").order("sort_order"),
-  ]);
-  const servers = game.data
-    ? await supabase
+/**
+ * Catálogo LU4: juego, servidores y categorías. Es público y casi nunca cambia, así que se cachea
+ * 10 minutos entre requests (cliente anónimo, sin cookies) en lugar de consultarlo en cada página.
+ */
+const loadCatalog = unstable_cache(
+  async () => {
+    const db = createAnonClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const [game, categories, servers] = await Promise.all([
+      db.from("games").select("id, slug, name").eq("slug", LU4_SLUG).single(),
+      db.from("categories").select("id, slug, name, description, unit_label, unit_label_plural").order("sort_order"),
+      db
         .from("game_servers")
-        .select("id, game_id, name, description")
-        .eq("game_id", game.data.id)
+        .select("id, game_id, name, description, game:games!inner(slug)")
+        .eq("game.slug", LU4_SLUG)
         .eq("active", true)
-        .order("sort_order")
-    : { data: [] };
-  return {
-    game: (game.data ?? null) as Game | null,
-    servers: (servers.data ?? []) as GameServer[],
-    categories: (categories.data ?? []) as Category[],
-  };
+        .order("sort_order"),
+    ]);
+    if (game.error || categories.error || servers.error) throw new Error("No se pudo cargar el catálogo");
+    return {
+      game: (game.data ?? null) as Game | null,
+      servers: (servers.data ?? []).map(({ id, game_id, name, description }) => ({ id, game_id, name, description })) as GameServer[],
+      categories: (categories.data ?? []) as Category[],
+    };
+  },
+  ["catalogo-lu4"],
+  { revalidate: 600, tags: ["catalogo"] },
+);
+
+export async function getCatalog(): Promise<{ game: Game | null; servers: GameServer[]; categories: Category[] }> {
+  try {
+    return await loadCatalog();
+  } catch {
+    return { game: null, servers: [], categories: [] }; // no se cachea: se reintenta en el próximo request
+  }
 }
 
 export const LOT_SELECT =
