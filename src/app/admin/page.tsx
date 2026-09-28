@@ -2,13 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { maintenance, settle, settleAllConfirmed } from "@/app/actions/admin";
 import { orderAction, requestRefund } from "@/app/actions/orders";
+import { reviewManualPayment, saveManualPaymentSettings } from "@/app/actions/manual-payments";
 import { processWithdrawal } from "@/app/actions/wallet";
+import { QrUploader } from "@/components/qr-uploader";
 import { OrdersTable, type OrderListRow } from "@/components/orders-table";
 import { SubmitButton } from "@/components/submit-button";
 import { EmptyState, Flash, formatDate, shortId } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { getPaymentsConfig } from "@/lib/config";
-import { formatARS } from "@/lib/money";
+import { centsToInput, formatARS } from "@/lib/money";
+import { configuredChannels } from "@/lib/notify";
+import { getManualPaymentSettings, METHOD_LABEL } from "@/lib/manual-payments";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPaymentProvider } from "@/lib/payments";
 import { ORDER_STATUSES, STATUS_LABELS, type OrderStatus } from "@/lib/orders/state-machine";
 import { getPlatformSettings } from "@/lib/settings";
@@ -31,7 +36,8 @@ export default async function AdminPage(props: PageProps<"/admin">) {
     .limit(100);
   if (estado) ordersQ = ordersQ.eq("status", estado);
 
-  const [orders, allTotals, disputes, toSettle, txs, settings, withdrawals] = await Promise.all([
+  const manualOn = getPaymentsConfig().mode === "manual";
+  const [orders, allTotals, disputes, toSettle, txs, settings, withdrawals, manualPending, manualSettings] = await Promise.all([
     ordersQ,
     supabase.from("orders").select("status, price_cents, commission_cents, platform_net_cents"),
     supabase
@@ -41,7 +47,7 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .order("created_at"),
     supabase
       .from("orders")
-      .select("id, seller_net_cents, commission_cents, confirmed_at, listing_snapshot, seller:profiles!orders_seller_id_fkey(display_name)")
+      .select("id, seller_id, payment_mode, seller_net_cents, commission_cents, confirmed_at, listing_snapshot, seller:profiles!orders_seller_id_fkey(display_name)")
       .eq("status", "confirmado")
       .order("confirmed_at"),
     supabase.from("payment_transactions").select("id, order_id, provider, kind, provider_ref, amount_cents, created_at").order("id", { ascending: false }).limit(15),
@@ -51,7 +57,31 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .select("id, amount_cents, destination, created_at, user:profiles!withdrawals_user_id_fkey(display_name)")
       .eq("status", "pendiente")
       .order("created_at"),
+    supabase
+      .from("manual_payments")
+      .select("id, order_id, method, reference, payer_name, note, proof_path, created_at, order:orders(price_cents, listing_snapshot), buyer:profiles!manual_payments_buyer_id_fkey(display_name)")
+      .eq("status", "pendiente")
+      .order("created_at"),
+    getManualPaymentSettings(),
   ]);
+
+  // Comprobantes subidos por los compradores (bucket privado): enlaces firmados de 10 minutos.
+  const proofUrls = new Map<number, string>();
+  await Promise.all(
+    (manualPending.data ?? []).map(async (m) => {
+      if (!m.proof_path) return;
+      const { data } = await supabase.storage.from("comprobantes").createSignedUrl(m.proof_path, 600);
+      if (data?.signedUrl) proofUrls.set(m.id, data.signedUrl);
+    }),
+  );
+  // Cuentas de cobro de los vendedores con órdenes de pago manual pendientes de liquidar.
+  const sellerIds = [...new Set((toSettle.data ?? []).filter((o) => o.payment_mode === "manual").map((o) => o.seller_id))];
+  const payoutAccounts = new Map<string, { holder_name: string; tax_id: string; cbu_or_alias: string }>();
+  if (sellerIds.length) {
+    const { data } = await createAdminClient().from("seller_payout_accounts").select("seller_id, holder_name, tax_id, cbu_or_alias").in("seller_id", sellerIds);
+    for (const a of data ?? []) payoutAccounts.set(a.seller_id, a);
+  }
+  const notifyChannels = configuredChannels();
 
   const totals = (allTotals.data ?? []).reduce(
     (acc, o) => {
@@ -91,6 +121,12 @@ export default async function AdminPage(props: PageProps<"/admin">) {
           Confirmación automática a las {settings.autoConfirmHours} h
         </p>
         {cfg.blockedReason && <p className="text-bad">Bloqueado: {cfg.blockedReason}</p>}
+        {cfg.mode === "manual" && (
+          <p className="text-muted">
+            Pago manual: los compradores transfieren a tus datos de cobro y vos confirmás cada pago. Avisos externos:{" "}
+            <strong className={notifyChannels.length ? "text-ok" : "text-warn-ink"}>{notifyChannels.length ? notifyChannels.join(" + ") : "ninguno configurado (Telegram o ntfy en las variables de entorno)"}</strong>.
+          </p>
+        )}
         {provider && (
           <ul className="flex flex-wrap gap-2">
             {(Object.entries(provider.capabilities) as [string, keyof typeof CAP_LABEL][]).map(([k, v]) => (
@@ -98,6 +134,121 @@ export default async function AdminPage(props: PageProps<"/admin">) {
             ))}
           </ul>
         )}
+      </section>
+
+      <section id="pagos-manuales" className="space-y-3 scroll-mt-24">
+        <h2 className="h2">
+          Pagos por verificar{" "}
+          {!!manualPending.data?.length && <span className="ml-1 rounded-full bg-crimson px-2 py-0.5 align-middle text-xs font-bold text-white">{manualPending.data.length}</span>}
+        </h2>
+        {!manualOn && <p className="text-sm text-muted">El modo de pago manual no está activo (PAYMENTS_PROVIDER=manual).</p>}
+        {manualPending.data?.length ? (
+          manualPending.data.map((m) => {
+            const ord = m.order as unknown as { price_cents: number; listing_snapshot: { title: string } };
+            const buyer = m.buyer as unknown as { display_name: string } | null;
+            return (
+              <div key={m.id} className="card space-y-3 border-gold/40">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={`/ordenes/${m.order_id}`} className="font-semibold text-brand hover:underline">
+                    {shortId(m.order_id)} · {ord.listing_snapshot.title}
+                  </Link>
+                  <span className="font-display text-xl font-bold text-gold-2">{formatARS(Number(ord.price_cents))}</span>
+                </div>
+                <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                  <div><dt className="inline text-muted">Comprador: </dt><dd className="inline">{buyer?.display_name}</dd></div>
+                  <div><dt className="inline text-muted">Medio: </dt><dd className="inline">{METHOD_LABEL[m.method] ?? m.method}</dd></div>
+                  <div className="sm:col-span-2"><dt className="inline text-muted">Referencia / TXID: </dt><dd className="inline font-mono break-all select-all">{m.reference}</dd></div>
+                  {m.payer_name && <div><dt className="inline text-muted">Pagador: </dt><dd className="inline">{m.payer_name}</dd></div>}
+                  {m.note && <div className="sm:col-span-2"><dt className="inline text-muted">Comentario: </dt><dd className="inline">{m.note}</dd></div>}
+                  <div><dt className="inline text-muted">Avisado: </dt><dd className="inline">{formatDate(m.created_at)}</dd></div>
+                  {proofUrls.get(m.id) && (
+                    <div><a href={proofUrls.get(m.id)} target="_blank" rel="noopener noreferrer" className="text-gold underline">Ver comprobante</a></div>
+                  )}
+                </dl>
+                <p className="hint">Verificá en tu banco / Binance que llegó el importe completo y que la referencia coincide antes de confirmar.</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <form action={reviewManualPayment} className="flex items-end gap-2">
+                    <input type="hidden" name="payment_id" value={m.id} />
+                    <input type="hidden" name="decision" value="aprobar" />
+                    <SubmitButton
+                      className="btn-primary shine"
+                      confirmTitle="¿Ya te llegó el pago?"
+                      confirmLabel="Sí, confirmar pago"
+                      confirm={`Confirmás que recibiste ${formatARS(Number(ord.price_cents))} (o su equivalente). La orden pasa a "pago confirmado" y el vendedor puede entregar.`}
+                    >
+                      Confirmar pago
+                    </SubmitButton>
+                  </form>
+                  <form action={reviewManualPayment} className="flex gap-2">
+                    <input type="hidden" name="payment_id" value={m.id} />
+                    <input type="hidden" name="decision" value="rechazar" />
+                    <input name="note" required placeholder="Motivo (lo ve el comprador)" className="input" />
+                    <SubmitButton className="btn-danger shrink-0" danger confirmTitle="¿Rechazar el aviso?" confirmLabel="Sí, rechazar" confirm="El comprador recibe el motivo y puede volver a avisar.">Rechazar</SubmitButton>
+                  </form>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <EmptyState title="No hay pagos por verificar" />
+        )}
+      </section>
+
+      <section id="datos-de-cobro" className="card space-y-4 scroll-mt-24">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="h2">Datos de cobro (pago manual)</h2>
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${manualSettings.configured ? "border-ok/30 bg-ok/10 text-ok" : "border-bad/40 bg-bad/10 text-bad"}`}>
+            {manualSettings.configured ? "Datos definitivos" : "Datos de ejemplo · no se debe transferir"}
+          </span>
+        </div>
+        <p className="text-sm text-muted">Esto es lo que ven los compradores. Reemplazá los genéricos por los tuyos y marcá &quot;definitivos&quot; para sacar el aviso de ejemplo. Nada de esto cambia importes ni estados de órdenes.</p>
+        <form action={saveManualPaymentSettings} className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="label" htmlFor="holder_name">Titular</label><input id="holder_name" name="holder_name" className="input" defaultValue={manualSettings.holderName} maxLength={120} /></div>
+            <div><label className="label" htmlFor="bank_name">Banco / billetera</label><input id="bank_name" name="bank_name" className="input" defaultValue={manualSettings.bankName} maxLength={80} /></div>
+            <div><label className="label" htmlFor="cvu">CVU / CBU (22 dígitos)</label><input id="cvu" name="cvu" className="input font-mono" defaultValue={manualSettings.cvu} inputMode="numeric" maxLength={22} /></div>
+            <div><label className="label" htmlFor="alias">Alias</label><input id="alias" name="alias" className="input" defaultValue={manualSettings.alias} maxLength={40} /></div>
+            <div><label className="label" htmlFor="cuit">CUIT/CUIL del titular</label><input id="cuit" name="cuit" className="input font-mono" defaultValue={manualSettings.cuit} maxLength={20} /></div>
+          </div>
+          <div>
+            <p className="label">QR de cobro</p>
+            <QrUploader currentUrl={manualSettings.qrUrl} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><label className="label" htmlFor="binance_pay_id">Binance Pay ID</label><input id="binance_pay_id" name="binance_pay_id" className="input font-mono" defaultValue={manualSettings.binancePayId} maxLength={40} /></div>
+            <div><label className="label" htmlFor="binance_email">Email de la cuenta Binance (opcional)</label><input id="binance_email" name="binance_email" className="input" defaultValue={manualSettings.binanceEmail} maxLength={120} /></div>
+          </div>
+          <div className="space-y-2">
+            <p className="label">Direcciones de depósito cripto</p>
+            {(["USDT", "USDC", "BTC"] as const).map((asset) => {
+              const w = manualSettings.wallets.find((x) => x.asset === asset);
+              return (
+                <div key={asset} className="grid gap-2 sm:grid-cols-[80px_140px_1fr]">
+                  <span className="self-center text-sm font-semibold">{asset}</span>
+                  <input name={`network_${asset}`} className="input" placeholder="Red (TRC20, BEP20…)" defaultValue={w?.network ?? ""} maxLength={30} />
+                  <input name={`address_${asset}`} className="input font-mono" placeholder="Dirección (vacío = no aceptar)" defaultValue={w?.address ?? ""} maxLength={120} />
+                </div>
+              );
+            })}
+            <p className="hint">Verificá dos veces cada dirección y la red: un error significa fondos perdidos.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="usd_rate">Cotización de referencia del dólar (ARS, opcional)</label>
+              <input id="usd_rate" name="usd_rate" className="input" inputMode="decimal" placeholder="1.200,00" defaultValue={manualSettings.usdRateCents ? centsToInput(manualSettings.usdRateCents) : ""} />
+              <p className="hint">Se usa solo para mostrar el equivalente en USDT/USDC. Actualizala cuando cambie.</p>
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="instructions">Instrucciones extra para el comprador (opcional)</label>
+            <textarea id="instructions" name="instructions" rows={3} maxLength={1500} className="input" defaultValue={manualSettings.instructions} placeholder="Ej: horario de verificación, qué hacer si pasan más de 2 horas…" />
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="configured" defaultChecked={manualSettings.configured} className="mt-1" />
+            <span>Estos datos son <strong>definitivos</strong>: verifiqué cada cuenta y dirección. (Sin esto los compradores ven el aviso de &quot;datos de ejemplo&quot;.)</span>
+          </label>
+          <SubmitButton className="btn-primary shine" pendingText="Guardando…">Guardar datos de cobro</SubmitButton>
+        </form>
       </section>
 
       <section className="space-y-3">
@@ -194,9 +345,26 @@ export default async function AdminPage(props: PageProps<"/admin">) {
                     <td className="px-4 py-3 text-right font-semibold">{formatARS(Number(o.seller_net_cents))}</td>
                     <td className="px-4 py-3 text-right">{formatARS(Number(o.commission_cents))}</td>
                     <td className="px-4 py-3 text-right">
-                      <form action={settle}>
+                      <form action={settle} className="flex flex-wrap items-center justify-end gap-2">
                         <input type="hidden" name="order_id" value={o.id} />
-                        <SubmitButton className="btn-ghost px-3 py-1.5">Liquidar</SubmitButton>
+                        {o.payment_mode === "manual" && (
+                          <>
+                            <span className="basis-full text-left text-xs text-muted">
+                              {payoutAccounts.get(o.seller_id)
+                                ? `Transferir a ${payoutAccounts.get(o.seller_id)!.holder_name} · CUIT ${payoutAccounts.get(o.seller_id)!.tax_id} · ${payoutAccounts.get(o.seller_id)!.cbu_or_alias}`
+                                : "El vendedor todavía no cargó su cuenta de cobro"}
+                            </span>
+                            <input name="reference" required minLength={4} placeholder="Nº de comprobante de tu transferencia" className="input w-56" />
+                          </>
+                        )}
+                        <SubmitButton
+                          className="btn-ghost px-3 py-1.5"
+                          confirm={o.payment_mode === "manual" ? "Confirmá que ya transferiste el neto al vendedor. Esto deja la orden como liquidada." : undefined}
+                          confirmTitle="¿Ya le transferiste al vendedor?"
+                          confirmLabel="Sí, marcar liquidada"
+                        >
+                          {o.payment_mode === "manual" ? "Marcar liquidada" : "Liquidar"}
+                        </SubmitButton>
                       </form>
                     </td>
                   </tr>

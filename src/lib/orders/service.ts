@@ -19,7 +19,7 @@ interface OrderRow {
   price_cents: number;
   seller_net_cents: number;
   currency: string;
-  payment_mode: "simulado" | "real";
+  payment_mode: "simulado" | "real" | "manual";
   payment_provider: string | null;
   listing_snapshot: { title?: string };
 }
@@ -45,7 +45,7 @@ async function actorFor(order: OrderRow, userId: string): Promise<Actor | null> 
 
 function modeMatches(order: OrderRow) {
   const cfg = getPaymentsConfig();
-  return (order.payment_mode === "simulado" && cfg.mode === "simulado") || (order.payment_mode === "real" && cfg.mode === "real");
+  return order.payment_mode === cfg.mode;
 }
 
 /** Inicia el cobro de una orden pendiente. Devuelve la URL del checkout del proveedor. */
@@ -104,6 +104,27 @@ export async function refundOrder(orderId: string, userId: string, note: string)
   if (!note.trim()) throw new OrderError("Indicá el motivo del reembolso");
   if (!modeMatches(order) || !order.payment_provider) throw new OrderError("La orden no pertenece al modo de pagos activo");
 
+  // Pago manual: el dinero está en la cuenta de Argenpay, así que solo un administrador puede devolverlo
+  // (por transferencia) y dejarlo registrado. El vendedor no tiene cómo hacerlo.
+  if (order.payment_mode === "manual") {
+    if (actor !== "admin") {
+      throw new OrderError("En pagos por transferencia el reembolso lo registra un administrador tras devolver el dinero. Escribile a soporte.");
+    }
+    const db = createAdminClient();
+    const { error } = await db.rpc("sys_record_refund", {
+      p_order_id: order.id,
+      p_provider: "manual",
+      p_provider_ref: `reembolso:${order.id}`,
+      p_amount_cents: order.price_cents,
+      p_raw: { manual: true },
+      p_actor_id: userId,
+      p_actor_role: actor,
+      p_note: note.trim(),
+    });
+    if (error) throw new OrderError(error.message);
+    return;
+  }
+
   // Pagada con saldo: el reembolso vuelve al saldo del comprador.
   if (order.payment_provider === "saldo") {
     const db = createAdminClient();
@@ -158,7 +179,7 @@ export async function refundOrder(orderId: string, userId: string, note: string)
 }
 
 /** Liquida el neto al vendedor de una orden confirmada. Solo admin (o cron). */
-export async function settleOrder(orderId: string, adminUserId: string | null): Promise<void> {
+export async function settleOrder(orderId: string, adminUserId: string | null, manualReference?: string): Promise<void> {
   const order = await loadOrder(orderId);
   if (adminUserId) {
     const actor = await actorFor(order, adminUserId);
@@ -168,6 +189,25 @@ export async function settleOrder(orderId: string, adminUserId: string | null): 
     throw new OrderError("Solo se liquidan órdenes confirmadas");
   }
   if (!modeMatches(order) || !order.payment_provider) throw new OrderError("La orden no pertenece al modo de pagos activo");
+
+  // Pago manual: el administrador ya transfirió el neto al vendedor por fuera y deja el comprobante.
+  if (order.payment_mode === "manual") {
+    const reference = manualReference?.trim() ?? "";
+    if (!adminUserId || reference.length < 4) {
+      throw new OrderError("Indicá el número de comprobante de la transferencia al vendedor (mínimo 4 caracteres)");
+    }
+    const db = createAdminClient();
+    const { error } = await db.rpc("sys_record_payout", {
+      p_order_id: order.id,
+      p_provider: "manual",
+      p_provider_ref: `${order.id.slice(0, 8)}:${reference}`,
+      p_amount_cents: order.seller_net_cents,
+      p_raw: { manual: true, comprobante: reference },
+      p_actor_id: adminUserId,
+    });
+    if (error) throw new OrderError(error.message);
+    return;
+  }
   const provider = getProviderById(order.payment_provider);
   if (!provider?.payouts || provider.capabilities.liquidacion === "no_soportada") {
     throw new OrderError("El proveedor configurado no admite liquidaciones automáticas");

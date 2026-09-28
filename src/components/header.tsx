@@ -47,11 +47,17 @@ export async function Header() {
   const p = session?.profile;
   let unread = 0;
   let wallet = null;
+  let adminPending: number | null = null;
   if (p) {
     const supabase = await createClient();
-    const [res, w] = await Promise.all([supabase.rpc("unread_conversations"), getMyWallet()]);
+    const [res, w, pend] = await Promise.all([
+      supabase.rpc("unread_conversations"),
+      getMyWallet(),
+      p.is_admin ? supabase.from("manual_payments").select("id", { count: "exact", head: true }).eq("status", "pendiente") : Promise.resolve(null),
+    ]);
     unread = Number(res.data ?? 0);
     wallet = w;
+    if (p.is_admin) adminPending = pend?.count ?? 0;
   }
 
   return (
@@ -92,7 +98,7 @@ export async function Header() {
                 <Link href="/panel/comprador" className={navLink}>Compras</Link>
                 <Link href="/panel/vendedor" className={navLink}>Ventas</Link>
               </nav>
-              <HeaderLive userId={p.id} initialUnread={unread} initialBalance={wallet ? wallet.available : null} />
+              <HeaderLive userId={p.id} initialUnread={unread} initialBalance={wallet ? wallet.available : null} initialAdminPending={adminPending} />
               <details className="group relative">
                 <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 hover:bg-white/5 [&::-webkit-details-marker]:hidden">
                   <Avatar name={p.display_name} url={p.avatar_url} size={30} />

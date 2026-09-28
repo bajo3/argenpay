@@ -9,7 +9,7 @@ export async function settle(formData: FormData) {
   const s = await requireAdmin();
   const orderId = str(formData, "order_id");
   try {
-    await settleOrder(orderId, s.userId);
+    await settleOrder(orderId, s.userId, str(formData, "reference"));
   } catch (e) {
     fail("/admin", errorMessage(e));
   }
@@ -20,7 +20,8 @@ export async function settle(formData: FormData) {
 export async function settleAllConfirmed() {
   const s = await requireAdmin();
   const db = createAdminClient();
-  const { data } = await db.from("orders").select("id").eq("status", "confirmado").limit(100);
+  // Las órdenes de pago manual se liquidan una por una (cada transferencia lleva su comprobante).
+  const { data } = await db.from("orders").select("id").eq("status", "confirmado").neq("payment_mode", "manual").limit(100);
   let ok = 0;
   const errors: string[] = [];
   for (const o of data ?? []) {

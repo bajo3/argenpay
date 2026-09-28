@@ -358,5 +358,68 @@ await as("authenticated", BUYER, () => db.query(`insert into conversation_messag
 await as("authenticated", BUYER, () => expectError("adjunto de otra conversación", () => db.query(`insert into conversation_messages (conversation_id, sender_id, body, attachment_path) values ($1,$2,'x',$3)`, [convA, BUYER, `${conv2}/x.png`])));
 await as("authenticated", BUYER, () => expectError("mensaje vacío sin adjunto", () => db.query(`insert into conversation_messages (conversation_id, sender_id, body) values ($1,$2,'   ')`, [convA, BUYER])));
 
+console.log("\nPago manual (transferencia / cripto verificada por un administrador)");
+const mListing = (await as("authenticated", SELLER, () =>
+  one(`insert into listings (seller_id, game_id, server_id, category_id, title, description, price_cents, stock, delivery_time_hours)
+       values ($1, $2, $3, $4, 'Adena pago manual', 'Prueba de transferencia', 100000, 10, 1) returning id`, [SELLER, ref.game, ref.server, ref.category]))).id;
+const mA = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'manual') id`, [mListing]))).id;
+const mB = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'manual') id`, [mListing]))).id;
+(await one(`select payment_mode, status from orders where id=$1`, [mA])).payment_mode === "manual" ? ok("orden creada en modo manual") : bad("modo manual");
+await as("authenticated", BUYER, () => expectError("modo de pago inexistente", () => db.query(`select create_order($1, 1, 'trueque')`, [mListing]), "inválido"));
+(await one(`select configured from manual_payment_settings`)).configured === false ? ok("datos de cobro genéricos y sin confirmar por defecto") : bad("configured por defecto");
+await as("authenticated", BUYER, () => expectError("comprador edita datos de cobro", () => db.query(`update manual_payment_settings set cvu = '1111111111111111111111'`)));
+await as("authenticated", BUYER, () => expectError("comprador se autoaprueba el pago", () => db.query(`select sys_review_manual_payment(1, true, $1, null)`, [BUYER]), "permission denied"));
+await as("authenticated", OTHER, () => expectError("tercero avisa un pago ajeno", () => db.query(`select report_manual_payment($1,'cvu','COMP-0001')`, [mA]), "inexistente"));
+await as("authenticated", BUYER, () => expectError("aviso sin referencia", () => db.query(`select report_manual_payment($1,'cvu','ab')`, [mA]), "TXID"));
+await as("authenticated", BUYER, () => expectError("medio inválido", () => db.query(`select report_manual_payment($1,'efectivo','COMP-0001')`, [mA])));
+await as("authenticated", BUYER, () => expectError("comprobante de otra carpeta", () => db.query(`select report_manual_payment($1,'cvu','COMP-0001','Yo',null,$2)`, [mA, `${OTHER}/${mA}/x.png`]), "Comprobante"));
+const mp1 = (await as("authenticated", BUYER, () => one(`select report_manual_payment($1,'usdt','TXID-ABC-123','Comprador Uno','desde binance',$2) id`, [mA, `${BUYER}/${mA}/c.png`]))).id;
+ok("el comprador avisa su pago");
+(await one(`select count(*)::int n from order_events where order_id=$1 and event_type='pago_informado'`, [mA])).n === 1 ? ok("queda registrado en el historial de la orden") : bad("evento pago_informado");
+(await one(`select status from orders where id=$1`, [mA])).status === "pendiente_pago" ? ok("avisar el pago NO cambia el estado de la orden") : bad("aviso cambió la orden");
+await as("authenticated", BUYER, () => expectError("segundo aviso mientras hay uno pendiente", () => db.query(`select report_manual_payment($1,'cvu','OTRO-9999')`, [mA]), "Ya avisaste"));
+await as("authenticated", BUYER, () => expectError("misma referencia en otra orden", () => db.query(`select report_manual_payment($1,'usdt','txid-abc-123')`, [mB]), "ya fue informada"));
+await as("authenticated", BUYER, () => db.query(`select * from manual_payments`).then((r) => (r.rows.length === 1 ? ok("el comprador ve su aviso") : bad("comprador ve avisos"))));
+await as("authenticated", OTHER, () => db.query(`select * from manual_payments`).then((r) => (r.rows.length === 0 ? ok("terceros no ven avisos de pago ajenos") : bad("tercero ve avisos"))));
+await as("authenticated", ADMIN, () => db.query(`select * from manual_payments`).then((r) => (r.rows.length === 1 ? ok("el administrador ve los avisos") : bad("admin no ve avisos"))));
+await as("authenticated", BUYER, () => expectError("comprador borra su aviso", () => db.query(`delete from manual_payments where id=$1`, [mp1])));
+
+// Vencimiento: la orden con aviso pendiente no se cancela; la otra sí.
+await db.exec(`alter table orders disable trigger orders_guard;
+  update orders set created_at = now() - interval '3 hours' where id in ('${mA}', '${mB}');
+  alter table orders enable trigger orders_guard;`);
+const stockBefore = (await one(`select stock from listings where id=$1`, [mListing])).stock;
+await as("service_role", null, () => db.query(`select sys_expire_pending()`));
+const expired = await one(`select (select status from orders where id=$1) a, (select status from orders where id=$2) b, (select stock from listings where id=$3) stock`, [mA, mB, mListing]);
+expired.a === "pendiente_pago" && expired.b === "cancelado" && expired.stock === stockBefore + 1
+  ? ok("un aviso pendiente frena el vencimiento; la orden sin aviso vence y devuelve stock") : bad(`vencimiento ${JSON.stringify(expired)}`);
+
+// Rechazo: pide motivo, avisa al comprador por el chat y deja volver a intentar.
+await as("service_role", null, () => expectError("rechazar sin motivo", () => db.query(`select sys_review_manual_payment($1,false,$2,'')`, [mp1, ADMIN]), "motivo"));
+(await as("service_role", null, () => one(`select sys_review_manual_payment($1,false,$2,'No llegó el importe') r`, [mp1, ADMIN]))).r === "rechazado" ? ok("administrador rechaza el aviso con motivo") : bad("rechazo");
+(await as("authenticated", BUYER, () => one(`select count(*)::int n from conversation_messages where kind='sistema' and order_id=$1 and body like '%no pudimos verificar tu pago%'`, [mA]))).n === 1
+  ? ok("el comprador recibe el motivo en el chat de la orden") : bad("sin aviso de rechazo");
+(await one(`select status from orders where id=$1`, [mA])).status === "pendiente_pago" ? ok("tras el rechazo la orden sigue pendiente de pago") : bad("estado tras rechazo");
+await as("service_role", null, () => expectError("revisar dos veces el mismo aviso", () => db.query(`select sys_review_manual_payment($1,true,$2,null)`, [mp1, ADMIN]), "ya fue revisado"));
+const mp2 = (await as("authenticated", BUYER, () => one(`select report_manual_payment($1,'usdt','TXID-ABC-123','Comprador Uno') id`, [mA]))).id;
+ok("una referencia rechazada se puede volver a informar");
+
+// Confirmación: recién ahora la orden queda pagada, con proveedor 'manual'.
+(await as("service_role", null, () => one(`select sys_review_manual_payment($1,true,$2,null) r`, [mp2, ADMIN]))).r === "confirmado" ? ok("administrador confirma el pago") : bad("confirmación");
+const paid = await one(`select status, payment_provider, paid_at is not null paid from orders where id=$1`, [mA]);
+paid.status === "pago_confirmado" && paid.payment_provider === "manual" && paid.paid ? ok("la orden queda pagada (proveedor manual) solo tras la confirmación") : bad(`orden pagada ${JSON.stringify(paid)}`);
+(await one(`select count(*)::int n from payment_transactions where order_id=$1 and provider='manual' and kind='cobro' and amount_cents=100000`, [mA])).n === 1
+  ? ok("cobro manual registrado por el importe exacto de la orden") : bad("payment_transactions manual");
+
+// Flujo completo hasta la liquidación manual.
+await as("authenticated", SELLER, () => db.query(`select order_action($1,'iniciar_entrega',null,null)`, [mA]));
+await as("authenticated", SELLER, () => db.query(`select order_action($1,'marcar_entregado','Adena enviada por trade',null)`, [mA]));
+await as("authenticated", BUYER, () => db.query(`select order_action($1,'confirmar_recepcion',null,null)`, [mA]));
+const net = Number((await one(`select seller_net_cents n from orders where id=$1`, [mA])).n);
+await as("service_role", null, () => expectError("liquidar un importe distinto al neto", () => db.query(`select sys_record_payout($1,'manual','x:TRANSF-1',$2,'{}',$3)`, [mA, net + 1, ADMIN]), "neto"));
+(await as("service_role", null, () => one(`select sys_record_payout($1,'manual','x:TRANSF-1',$2,'{"manual":true}',$3) r`, [mA, net, ADMIN]))).r === "liquidado"
+  ? ok("liquidación manual registrada con su comprobante") : bad("liquidación manual");
+(await one(`select status from orders where id=$1`, [mA])).status === "liquidado" ? ok("orden manual liquidada") : bad("estado final manual");
+
 console.log(failures ? `\n${failures} verificaciones fallaron` : "\nTodas las verificaciones pasaron");
 process.exit(failures ? 1 : 0);

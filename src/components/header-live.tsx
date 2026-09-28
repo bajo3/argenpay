@@ -52,11 +52,14 @@ export function HeaderLive({
   userId,
   initialUnread,
   initialBalance,
+  initialAdminPending = null,
 }: {
   userId: string;
   initialUnread: number;
   /** null = el saldo no está habilitado (modo real). */
   initialBalance: number | null;
+  /** Solo administradores: pagos manuales por verificar (null = no es admin). */
+  initialAdminPending?: number | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -65,6 +68,8 @@ export function HeaderLive({
   const [unread, setUnread] = useState(initialUnread);
   const unreadRef = useRef(initialUnread);
   const [balance, setBalance] = useState(initialBalance);
+  const [adminPending, setAdminPending] = useState(initialAdminPending);
+  const isAdmin = initialAdminPending !== null;
   const [bump, setBump] = useState(false);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[] | null>(null);
@@ -82,10 +87,12 @@ export function HeaderLive({
 
   /** Actualiza no leídos y saldo. Devuelve true si aumentaron los no leídos. */
   const refreshCounters = useCallback(async (): Promise<boolean> => {
-    const [u, w] = await Promise.all([
+    const [u, w, pend] = await Promise.all([
       supabase.rpc("unread_conversations"),
       walletOn ? supabase.rpc("my_wallet") : Promise.resolve({ data: null }),
+      isAdmin ? supabase.from("manual_payments").select("id", { count: "exact", head: true }).eq("status", "pendiente") : Promise.resolve(null),
     ]);
+    if (pend && typeof pend.count === "number") setAdminPending(pend.count);
     let increased = false;
     if (typeof u.data === "number") {
       increased = u.data > unreadRef.current;
@@ -96,7 +103,7 @@ export function HeaderLive({
     const row = Array.isArray(w.data) ? w.data[0] : w.data;
     if (row) setBalance(Number(row.available_cents ?? 0));
     return increased;
-  }, [supabase, walletOn]);
+  }, [supabase, walletOn, isAdmin]);
 
   const loadInbox = useCallback(async () => {
     const { data } = await supabase
@@ -199,6 +206,19 @@ export function HeaderLive({
         void refreshCounters();
         if (pathRef.current === "/saldo") softRefresh();
       });
+    if (isAdmin) {
+      // Pagos manuales: el aviso de un comprador te llega al instante (RLS: solo lo reciben los administradores).
+      channel
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "manual_payments" }, () => {
+          void refreshCounters();
+          if (pathRef.current.startsWith("/admin")) softRefresh();
+          pushToastRef.current({ href: "/admin#pagos-manuales", title: "💸 Pago para verificar", body: "Un comprador avisó que transfirió. Revisá y confirmá.", system: true });
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "manual_payments" }, () => {
+          void refreshCounters();
+          if (pathRef.current.startsWith("/admin")) softRefresh();
+        });
+    }
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (data.session) await supabase.realtime.setAuth(data.session.access_token);
@@ -232,7 +252,7 @@ export function HeaderLive({
       window.removeEventListener(COUNTERS_EVENT, onCounters);
       void supabase.removeChannel(channel);
     };
-  }, [supabase, userId, refreshCounters, softRefresh]);
+  }, [supabase, userId, isAdmin, refreshCounters, softRefresh]);
 
   // Al navegar: panel cerrado y contadores al día (acciones propias como pagar con saldo).
   const [lastPath, setLastPath] = useState(pathname);
@@ -263,8 +283,9 @@ export function HeaderLive({
   // Contador en el título de la pestaña.
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\+?\) /, "");
-    document.title = unread > 0 ? `(${unread > 9 ? "9+" : unread}) ${base}` : base;
-  }, [unread, pathname]);
+    const total = unread + (adminPending ?? 0);
+    document.title = total > 0 ? `(${total > 9 ? "9+" : total}) ${base}` : base;
+  }, [unread, adminPending, pathname]);
 
   useEffect(() => {
     if (!bump) return;
@@ -340,6 +361,16 @@ export function HeaderLive({
           </div>
         )}
       </div>
+
+      {!!adminPending && (
+        <Link
+          href="/admin#pagos-manuales"
+          className="rounded-lg border border-crimson/40 bg-crimson/10 px-2.5 py-1.5 text-sm font-semibold text-crimson tabular-nums transition hover:bg-crimson/20"
+          title="Pagos por transferencia esperando tu verificación"
+        >
+          💸 {adminPending}
+        </Link>
+      )}
 
       {balance !== null && (
         <Link href="/saldo" className="hidden rounded-lg border border-gold/25 bg-gold/5 px-2.5 py-1.5 text-sm font-semibold text-gold-2 tabular-nums transition hover:bg-gold/15 sm:block" title="Tu saldo (simulado)">

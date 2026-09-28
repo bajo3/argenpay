@@ -6,12 +6,14 @@ import { leaveReview, replyReview } from "@/app/actions/social";
 import { payWithBalance } from "@/app/actions/wallet";
 import { ChatBox } from "@/components/chat-box";
 import { DeliveryForm } from "@/components/delivery-form";
+import { ManualPaymentPanel, type ManualReport } from "@/components/manual-payment-panel";
 import { Stars, UserCell } from "@/components/seller-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Flash, formatDate, shortId, StatusBadge } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getPaymentsConfig } from "@/lib/config";
 import { findConversation, getMessages } from "@/lib/conversations";
+import { getManualPaymentSettings } from "@/lib/manual-payments";
 import { formatQty, raceLabel } from "@/lib/lu4";
 import { formatARS } from "@/lib/money";
 import {
@@ -79,9 +81,14 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
     findConversation(o.buyer_id, o.seller_id),
     supabase.from("listing_delivery_items").select("id, content, delivered_at").eq("order_id", id).order("id"),
   ]);
-  const [messages, wallet] = await Promise.all([
+  const showManual = o.buyer_id === s.userId && o.status === "pendiente_pago" && o.payment_mode === "manual" && getPaymentsConfig().mode === "manual";
+  const [messages, wallet, manualSettings, manualReports] = await Promise.all([
     conversationId ? getMessages(conversationId) : Promise.resolve([]),
     o.buyer_id === s.userId && o.status === "pendiente_pago" && o.payment_mode === "simulado" ? getMyWallet() : Promise.resolve(null),
+    showManual ? getManualPaymentSettings() : Promise.resolve(null),
+    showManual
+      ? supabase.from("manual_payments").select("id, method, reference, status, admin_note, created_at").eq("order_id", id).order("id", { ascending: false })
+      : Promise.resolve(null),
   ]);
 
   const evidenceWithUrls = await Promise.all(
@@ -95,7 +102,8 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   const role: Actor = o.buyer_id === s.userId ? "comprador" : o.seller_id === s.userId ? "vendedor" : "admin";
   const actions = availableUserActions(o, role);
   const cfg = getPaymentsConfig();
-  const canRefund = isAllowed(SYSTEM_TRANSITIONS, "reembolsar", o.status, role);
+  // En pagos manuales el dinero está en la cuenta de Argenpay: solo un administrador puede devolverlo.
+  const canRefund = isAllowed(SYSTEM_TRANSITIONS, "reembolsar", o.status, role) && (o.payment_mode !== "manual" || role === "admin");
   const names: Record<string, string> = { [o.buyer_id]: o.buyer?.display_name ?? "Comprador", [o.seller_id]: o.seller?.display_name ?? "Vendedor" };
   const snap = o.listing_snapshot;
   const unit = snap.unit ?? "u.";
@@ -122,6 +130,9 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
           <StatusBadge status={o.status} />
           {o.payment_mode === "simulado" && (
             <span className="rounded border border-gold/30 bg-warn-bg px-2 py-0.5 text-[10px] font-bold tracking-wider text-warn-ink">SIMULADA</span>
+          )}
+          {o.payment_mode === "manual" && (
+            <span className="rounded border border-gold/30 bg-gold/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-gold-2">TRANSFERENCIA</span>
           )}
         </div>
       </header>
@@ -163,7 +174,17 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
             <h2 className="h2">Próximo paso</h2>
             <NextStepText o={o} role={role} />
 
-            {o.status === "pendiente_pago" && role === "comprador" && cfg.mode !== "bloqueado" && (
+            {showManual && manualSettings && (
+              <ManualPaymentPanel
+                orderId={o.id}
+                userId={s.userId}
+                priceCents={Number(o.price_cents)}
+                settings={manualSettings}
+                reports={(manualReports?.data ?? []) as ManualReport[]}
+              />
+            )}
+
+            {o.status === "pendiente_pago" && role === "comprador" && o.payment_mode !== "manual" && cfg.mode !== "bloqueado" && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {wallet && (
                   <form action={payWithBalance} className="rounded-xl border border-gold/30 bg-gold/5 p-4">
@@ -346,7 +367,11 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                 <div><p className="mb-1 text-xs text-muted">Comprador</p><UserCell user={o.buyer} /></div>
                 <div><p className="mb-1 text-xs text-muted">Vendedor</p><UserCell user={o.seller} /></div>
               </div>
-              {o.paid_with && <Row label="Medio de pago" value={o.paid_with === "saldo" ? "Saldo de Argenpay" : "Procesador"} />}
+              {o.payment_provider === "manual" ? (
+                <Row label="Medio de pago" value="Transferencia (verificada a mano)" />
+              ) : (
+                o.paid_with && <Row label="Medio de pago" value={o.paid_with === "saldo" ? "Saldo de Argenpay" : "Procesador"} />
+              )}
               <Row label="Pago confirmado" value={formatDate(o.paid_at)} />
               <Row label="Entrega estimada hasta" value={formatDate(o.delivery_due_at)} />
               <Row label="Entregado" value={formatDate(o.delivered_at)} />
@@ -398,6 +423,12 @@ function NextStepText({ o, role }: { o: Order; role: Actor }) {
     cancelado: { comprador: "La orden fue cancelada.", vendedor: "La orden fue cancelada." },
     liquidado: { comprador: "Operación cerrada. ¡Gracias por comprar en Argenpay!", vendedor: "El pago se liberó: tu neto ya está en tu saldo." },
   };
+  if (o.payment_mode === "manual" && o.status === "pendiente_pago" && role === "comprador") {
+    return <p className="text-sm text-muted">Transferí el importe a los datos de abajo y avisá el pago con el comprobante. Un administrador lo verifica y confirma la orden; hasta entonces el vendedor no entrega.</p>;
+  }
+  if (o.payment_mode === "manual" && o.status === "liquidado" && role === "vendedor") {
+    return <p className="text-sm text-muted">Te transferimos el neto a tu cuenta de cobro. Si no lo ves, escribile a soporte con el número de orden.</p>;
+  }
   const text = t[o.status]?.[role] ?? `Estado: ${STATUS_LABELS[o.status]}.`;
   return <p className="text-sm text-muted">{text}</p>;
 }

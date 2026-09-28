@@ -82,3 +82,20 @@ onboarding, reembolsos ni contracargos para split. No está mejor documentado qu
   e impuestos (facturación de la comisión, retenciones).
 - Política de reclamos, plazos y evidencia exigible por categoría.
 - Verificación de identidad de vendedores y límites por antigüedad.
+
+## Modo manual (transferencia / QR / Binance / cripto)
+
+`PAYMENTS_PROVIDER=manual` (requiere `PAYMENTS_REAL_CHARGES_AUTHORIZED=true`). No usa procesador: el comprador
+transfiere a los datos de cobro de Argenpay, avisa con el TXID/comprobante y **un administrador confirma a mano**.
+
+- Datos de cobro editables en `/admin` (CVU, alias, QR, Binance Pay ID, direcciones USDT/USDC/BTC). Vienen **genéricos**
+  y con el aviso "no transferir" hasta que se marcan como definitivos.
+- El pago recién se toma como recibido cuando el administrador lo confirma (`sys_review_manual_payment` →
+  `sys_confirm_payment` con proveedor `manual`). El frontend nunca marca una orden como pagada.
+- Un aviso pendiente frena el vencimiento de la orden; una referencia/TXID no puede usarse en dos avisos vigentes.
+- Reembolsos y liquidaciones son manuales: solo un administrador los registra (con el comprobante de la transferencia).
+- Avisos al titular: campana/contador en el encabezado (en vivo), y opcionalmente Telegram o ntfy
+  (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, `NTFY_TOPIC`).
+- **Pendiente legal/impositivo (no lo resuelve el código):** recibir dinero de terceros en una cuenta propia y pagarlo
+  después sigue siendo cobrar por cuenta de terceros (ver punto 4 de la recomendación). Consultar contador y abogado
+  antes de operar con dinero real; la interfaz no debe hablar de "dinero protegido" ni "fondos retenidos".

@@ -7,7 +7,14 @@ import { getPaymentsConfig } from "@/lib/config";
 export function PurchaseSteps() {
   const cfg = getPaymentsConfig();
   const simulated = cfg.mode === "simulado";
-  const steps = simulated || cfg.holdAndPayoutVerified
+  const steps = cfg.mode === "manual"
+    ? [
+        "Transferís el importe a los datos de cobro de Argenpay (CVU/QR, Binance o cripto).",
+        "Avisás el pago con el comprobante: un administrador lo verifica a mano.",
+        "Con el pago confirmado, el vendedor te entrega en el juego.",
+        "Confirmás la recepción o abrís un reclamo. Cerrada la operación, le transferimos el neto al vendedor.",
+      ]
+    : simulated || cfg.holdAndPayoutVerified
     ? [
         "Pagás el precio total en Argenpay.",
         "El vendedor recibe la orden pagada y te entrega en el juego.",

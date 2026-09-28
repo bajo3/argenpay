@@ -22,7 +22,7 @@ export async function createOrder(formData: FormData) {
   const { data, error } = await supabase.rpc("create_order", {
     p_listing_id: listingId,
     p_quantity: quantity,
-    p_payment_mode: cfg.mode === "real" ? "real" : "simulado",
+    p_payment_mode: cfg.mode === "real" ? "real" : cfg.mode === "manual" ? "manual" : "simulado",
   });
   if (error) fail(back, error.message);
   redirect(`/ordenes/${data}`);

@@ -5,6 +5,14 @@ import { getPaymentsConfig } from "@/lib/config";
 export function ModeBanner() {
   const cfg = getPaymentsConfig();
   if (cfg.mode === "real") return null;
+  if (cfg.mode === "manual") {
+    return (
+      <div className="border-b border-gold/20 bg-gold/5 px-4 py-1.5 text-center text-xs text-gold-2">
+        <strong>Pagos por transferencia:</strong> cada pago lo verifica un administrador a mano antes de que el vendedor entregue, así que puede demorar.{" "}
+        <Link href="/como-funciona" className="underline underline-offset-2">Más info</Link>
+      </div>
+    );
+  }
   return (
     <div className="border-b border-gold/20 bg-warn-bg px-4 py-1.5 text-center text-xs text-warn-ink">
       {cfg.mode === "simulado" ? (
