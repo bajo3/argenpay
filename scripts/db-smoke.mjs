@@ -421,5 +421,31 @@ await as("service_role", null, () => expectError("liquidar un importe distinto a
   ? ok("liquidación manual registrada con su comprobante") : bad("liquidación manual");
 (await one(`select status from orders where id=$1`, [mA])).status === "liquidado" ? ok("orden manual liquidada") : bad("estado final manual");
 
+console.log("\nIngresos detectados en Binance");
+const mC = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'manual') id`, [mListing]))).id;
+const mD = (await as("authenticated", BUYER, () => one(`select create_order($1, 2, 'manual') id`, [mListing]))).id;
+const repC = (await as("authenticated", BUYER, () => one(`select report_manual_payment($1,'usdt','0xABCDEF1234567890') id`, [mC]))).id;
+const rec = (key, src, asset, amount, tx, extra = "{}") =>
+  as("service_role", null, () => one(`select * from sys_record_deposit($1,$2,$3,$4,null,$5,null,now(),$6::jsonb)`, [key, src, asset, amount, tx, extra]));
+await as("authenticated", BUYER, () => expectError("comprador registra un ingreso", () => db.query(`select * from sys_record_deposit('x','cripto','USDT',1,null,'t',null,now(),'{}')`), "permission denied"));
+const dep1 = await rec("cripto:1", "cripto", "usdt", 1.2, "0xabcdef1234567890");
+dep1.is_new && Number(dep1.matched_payment_id) === Number(repC) && dep1.matched_order_id === mC ? ok("depósito cripto se cruza con el TXID avisado (sin distinguir mayúsculas)") : bad(`cruce cripto ${JSON.stringify(dep1)}`);
+const dep1b = await rec("cripto:1", "cripto", "usdt", 1.2, "0xabcdef1234567890");
+!dep1b.is_new ? ok("el mismo ingreso no se registra ni avisa dos veces") : bad("duplicado");
+(await one(`select status from orders where id=$1`, [mC])).status === "pendiente_pago" ? ok("detectar el ingreso NO confirma la orden (lo confirma el admin)") : bad("ingreso confirmó la orden");
+const dep2 = await rec("pesos:77", "pesos", "ARS", 2000.0, "77");
+dep2.is_new && dep2.matched_payment_id === null ? ok("ingreso en pesos sin aviso queda sin cruzar") : bad(`pesos sin aviso ${JSON.stringify(dep2)}`);
+const repD = (await as("authenticated", BUYER, () => one(`select report_manual_payment($1,'cvu','COMP-778899') id`, [mD]))).id;
+Number((await one(`select matched_payment_id m from incoming_deposits where source_key='pesos:77'`)).m) === Number(repD)
+  ? ok("si el comprador avisa después, se cruza por importe exacto en pesos") : bad("cruce pesos posterior");
+const dep3 = await rec("pesos:78", "pesos", "ARS", 999.99, "78");
+dep3.matched_payment_id === null ? ok("un importe distinto no se cruza") : bad("cruce importe distinto");
+await as("authenticated", BUYER, () => db.query(`select * from incoming_deposits`).then((r) => (r.rows.length === 0 ? ok("los compradores no ven los ingresos") : bad("comprador ve ingresos"))));
+await as("authenticated", ADMIN, () => db.query(`select * from incoming_deposits`).then((r) => (r.rows.length === 3 ? ok("el administrador ve los ingresos") : bad(`admin ve ${r.rows.length}`))));
+await as("service_role", null, () => db.query(`select sys_deposit_watch_status(null, null)`));
+await as("service_role", null, () => db.query(`select sys_deposit_watch_status(false, 'Binance caído')`));
+const ws = await one(`select last_run_at is not null ran, last_ok_at, last_error from deposit_watch_state`);
+ws.ran && ws.last_ok_at === null && ws.last_error === "Binance caído" ? ok("el estado del lector registra errores") : bad(`estado lector ${JSON.stringify(ws)}`);
+
 console.log(failures ? `\n${failures} verificaciones fallaron` : "\nTodas las verificaciones pasaron");
 process.exit(failures ? 1 : 0);

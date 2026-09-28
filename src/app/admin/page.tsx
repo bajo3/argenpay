@@ -4,6 +4,8 @@ import { maintenance, settle, settleAllConfirmed } from "@/app/actions/admin";
 import { orderAction, requestRefund } from "@/app/actions/orders";
 import { reviewManualPayment, saveManualPaymentSettings } from "@/app/actions/manual-payments";
 import { processWithdrawal } from "@/app/actions/wallet";
+import { AlarmToggle } from "@/components/alarm-toggle";
+import { CheckDepositsButton } from "@/components/check-deposits-button";
 import { QrUploader } from "@/components/qr-uploader";
 import { OrdersTable, type OrderListRow } from "@/components/orders-table";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,6 +13,7 @@ import { EmptyState, Flash, formatDate, shortId } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth";
 import { getPaymentsConfig } from "@/lib/config";
 import { centsToInput, formatARS } from "@/lib/money";
+import { binanceConfigured } from "@/lib/binance";
 import { configuredChannels } from "@/lib/notify";
 import { getManualPaymentSettings, METHOD_LABEL } from "@/lib/manual-payments";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -64,6 +67,12 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .order("created_at"),
     getManualPaymentSettings(),
   ]);
+  const [deposits, watch] = await Promise.all([
+    supabase.from("incoming_deposits").select("id, source, asset, amount, network, tx_id, payer, occurred_at, matched_payment_id").order("occurred_at", { ascending: false }).limit(15),
+    supabase.from("deposit_watch_state").select("last_run_at, last_ok_at, last_error").maybeSingle(),
+  ]);
+  const matchedByPayment = new Map((deposits.data ?? []).filter((d) => d.matched_payment_id).map((d) => [Number(d.matched_payment_id), d]));
+  const binanceOn = binanceConfigured();
 
   // Comprobantes subidos por los compradores (bucket privado): enlaces firmados de 10 minutos.
   const proofUrls = new Map<number, string>();
@@ -165,7 +174,13 @@ export default async function AdminPage(props: PageProps<"/admin">) {
                     <div><a href={proofUrls.get(m.id)} target="_blank" rel="noopener noreferrer" className="text-gold underline">Ver comprobante</a></div>
                   )}
                 </dl>
-                <p className="hint">Verificá en tu banco / Binance que llegó el importe completo y que la referencia coincide antes de confirmar.</p>
+                {matchedByPayment.get(m.id) ? (
+                  <p className="rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok">
+                    ✓ Llegó a Binance: {depositAmount(matchedByPayment.get(m.id)!)} el {formatDate(matchedByPayment.get(m.id)!.occurred_at)}. Revisá que el importe alcance y confirmá.
+                  </p>
+                ) : (
+                  <p className="hint">Todavía no detectamos este ingreso en Binance. Verificá a mano que llegó el importe completo antes de confirmar.</p>
+                )}
                 <div className="grid gap-3 md:grid-cols-2">
                   <form action={reviewManualPayment} className="flex items-end gap-2">
                     <input type="hidden" name="payment_id" value={m.id} />
@@ -191,6 +206,46 @@ export default async function AdminPage(props: PageProps<"/admin">) {
           })
         ) : (
           <EmptyState title="No hay pagos por verificar" />
+        )}
+      </section>
+
+      <section id="ingresos" className="space-y-3 scroll-mt-24">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="h2">Ingresos detectados en Binance</h2>
+          {binanceOn && <CheckDepositsButton />}
+        </div>
+        <AlarmToggle />
+        {!binanceOn ? (
+          <p className="card text-sm text-muted">
+            Falta conectar Binance: creá una API key de <strong>solo lectura</strong> y cargala en Vercel como BINANCE_API_KEY y BINANCE_API_SECRET.
+          </p>
+        ) : (
+          <p className="text-xs text-muted">
+            Última revisión: {formatDate(watch.data?.last_run_at ?? null)} · última correcta: {formatDate(watch.data?.last_ok_at ?? null)}
+            {watch.data?.last_error && <span className="block text-bad">Error: {watch.data.last_error}</span>}
+          </p>
+        )}
+        {deposits.data?.length ? (
+          <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+            <table className="w-full min-w-[600px] text-sm">
+              <thead className="bg-bg text-left text-xs uppercase tracking-wide text-muted">
+                <tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Origen</th><th className="px-4 py-3">Referencia</th><th className="px-4 py-3">Aviso</th><th className="px-4 py-3 text-right">Importe</th></tr>
+              </thead>
+              <tbody>
+                {deposits.data.map((d) => (
+                  <tr key={d.id} className="border-t border-line">
+                    <td className="px-4 py-3 text-muted">{formatDate(d.occurred_at)}</td>
+                    <td className="px-4 py-3">{d.source === "pesos" ? "CVU (pesos)" : d.source === "binance_pay" ? "Binance Pay" : `Cripto${d.network ? ` · ${d.network}` : ""}`}{d.payer && <span className="block text-xs text-muted">{d.payer}</span>}</td>
+                    <td className="px-4 py-3 font-mono text-xs break-all">{d.tx_id ? String(d.tx_id).slice(0, 22) : "—"}</td>
+                    <td className="px-4 py-3">{d.matched_payment_id ? <span className="text-ok">Coincide</span> : <span className="text-muted">Sin aviso</span>}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-ok">+{depositAmount(d)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          binanceOn && <EmptyState title="Todavía no se detectaron ingresos" />
         )}
       </section>
 
@@ -413,6 +468,11 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       </section>
     </div>
   );
+}
+
+function depositAmount(d: { asset: string; amount: number | string }) {
+  const n = Number(d.amount);
+  return d.asset === "ARS" ? formatARS(Math.round(n * 100)) : `${n.toLocaleString("es-AR", { maximumFractionDigits: 8 })} ${d.asset}`;
 }
 
 function Kpi({ label, value }: { label: string; value: string }) {

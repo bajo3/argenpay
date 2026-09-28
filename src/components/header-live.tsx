@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { alarmEnabled, playAlarm, systemNotify } from "@/lib/alarm";
 import { formatARS } from "@/lib/money";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "./seller-badge";
@@ -217,6 +218,20 @@ export function HeaderLive({
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "manual_payments" }, () => {
           void refreshCounters();
           if (pathRef.current.startsWith("/admin")) softRefresh();
+        })
+        // Entró dinero a Binance: alarma (sonido + notificación del sistema) y aviso en pantalla.
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "incoming_deposits" }, (payload) => {
+          const d = payload.new as { asset: string; amount: number | string; source: string; matched_payment_id: number | null };
+          const n = Number(d.amount);
+          const amount = d.asset === "ARS" ? formatARS(Math.round(n * 100)) : `${n.toLocaleString("es-AR", { maximumFractionDigits: 8 })} ${d.asset}`;
+          const title = `💰 Ingresó ${amount}`;
+          const body = d.matched_payment_id ? "Coincide con un aviso de pago: confirmalo." : "Revisá si corresponde a alguna orden.";
+          pushToastRef.current({ href: "/admin#pagos-manuales", title, body, system: true });
+          if (alarmEnabled()) {
+            void playAlarm();
+            systemNotify(title, body, "/admin#pagos-manuales");
+          }
+          if (pathRef.current.startsWith("/admin")) softRefresh();
         });
     }
     (async () => {
@@ -240,6 +255,9 @@ export function HeaderLive({
       }
     }, 15_000);
     const presence = setInterval(() => visible() && void supabase.rpc("touch_presence"), 120_000);
+    const checkDeposits = () => void fetch("/api/ingresos/revisar", { method: "POST" }).catch(() => {});
+    if (isAdmin) checkDeposits();
+    const depositPoll = isAdmin ? setInterval(checkDeposits, 60_000) : null;
     const onFocus = () => void refreshCounters();
     const onCounters = () => void refreshCounters();
     window.addEventListener("focus", onFocus);
@@ -248,6 +266,7 @@ export function HeaderLive({
       cancelled = true;
       clearInterval(poll);
       clearInterval(presence);
+      if (depositPoll) clearInterval(depositPoll);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(COUNTERS_EVENT, onCounters);
       void supabase.removeChannel(channel);

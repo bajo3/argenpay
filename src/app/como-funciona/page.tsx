@@ -5,13 +5,15 @@ import { getPaymentsConfig } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Cómo funciona" };
 
-const BLOCKS: { title: string; items: string[] }[] = [
+const blocks = (manual: boolean): { title: string; items: string[] }[] => [
   {
     title: "Para compradores",
     items: [
       "Elegí una oferta por servidor (Carmine, Gamma, Black o White). La adena se vende por kk (1.000.000 de adena) y elegís cuántos kk comprar.",
       "Antes de comprar podés escribirle al vendedor. Cada orden publica sus avisos en ese mismo chat y guarda un registro de todo lo que pasa.",
-      "Pagás con tu saldo de Argenpay o con el procesador. Las ofertas con ⚡ entrega automática te muestran lo comprado al instante.",
+      manual
+        ? "Pagás por transferencia al CVU/alias o QR, Binance Pay o cripto (USDT) y avisás el pago con el comprobante. Un administrador lo verifica y recién ahí el vendedor entrega."
+        : "Pagás con tu saldo de Argenpay o con el procesador. Las ofertas con ⚡ entrega automática te muestran lo comprado al instante.",
       "Revisá en el juego lo recibido y tocá “Recibí todo”: recién ahí se libera el pago al vendedor. Si algo no coincide, abrí un reclamo y un administrador lo resuelve.",
     ],
   },
@@ -20,7 +22,9 @@ const BLOCKS: { title: string; items: string[] }[] = [
     items: [
       "Tocá + Publicar y elegí cuenta, adena, ítem, coins, servicio u otro. Indicá precio por unidad, disponibilidad, compra mínima y tiempo de entrega.",
       "Con entrega automática cargás lo que entregás (uno por línea) y cada comprador recibe su ítem apenas paga.",
-      "Cuando el comprador confirma, el 90% del precio entra a tu saldo (Argenpay cobra 10% de comisión). Después pedís el retiro a tu CBU/CVU o alias.",
+      manual
+        ? "Cuando el comprador confirma, te transferimos el 90% del precio (Argenpay cobra 10% de comisión) a la cuenta que cargues en Mi cuenta. El CBU/CVU tiene que estar a tu nombre."
+        : "Cuando el comprador confirma, el 90% del precio entra a tu saldo (Argenpay cobra 10% de comisión). Después pedís el retiro a tu CBU/CVU o alias.",
       "Subí tus ofertas cada 4 horas para aparecer primero en el listado y cuidá tus reseñas: son lo primero que miran los compradores.",
     ],
   },
@@ -44,7 +48,7 @@ export default function HowItWorks() {
           retiro) se puede probar de punta a punta, pero ningún importe es real.
         </div>
       )}
-      {BLOCKS.map((b, i) => (
+      {blocks(cfg.mode === "manual").map((b, i) => (
         <section key={b.title} className="card animate-fade-up space-y-3" style={{ "--i": i } as React.CSSProperties}>
           <h2 className="h2">{b.title}</h2>
           <ol className="space-y-2">
