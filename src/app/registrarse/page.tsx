@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { signUp } from "@/app/actions/auth";
+import { AuthShell } from "@/components/auth-shell";
 import { SubmitButton } from "@/components/submit-button";
 import { Flash } from "@/components/ui";
 
@@ -9,10 +10,11 @@ export const metadata: Metadata = { title: "Crear cuenta" };
 export default async function SignUpPage(props: PageProps<"/registrarse">) {
   const sp = await props.searchParams;
   return (
-    <div className="mx-auto max-w-sm">
+    <AuthShell title="Sumate al mercado de LU4" subtitle="Comprá y vendé adena, cuentas e ítems entre jugadores.">
+      <div className="mx-auto max-w-sm">
       <h1 className="h1 mb-4">Crear cuenta</h1>
       <Flash error={sp.error} ok={sp.ok} />
-      <form action={signUp} className="card space-y-4">
+      <form action={signUp} className="space-y-4">
         <div>
           <label className="label" htmlFor="display_name">Nombre visible</label>
           <input id="display_name" name="display_name" required minLength={2} maxLength={40} className="input" />
@@ -39,5 +41,6 @@ export default async function SignUpPage(props: PageProps<"/registrarse">) {
         ¿Ya tenés cuenta? <Link href="/ingresar" className="font-semibold text-brand">Ingresá</Link>
       </p>
     </div>
+      </AuthShell>
   );
 }

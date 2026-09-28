@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import { getSessionProfile } from "@/lib/auth";
@@ -16,12 +17,12 @@ const CATEGORIES = [
 ];
 
 export const PUBLISH_OPTIONS = [
-  { href: "/publicar/cuenta", label: "Publicar cuenta", icon: "♜" },
-  { href: "/publicar/adena", label: "Publicar adena", icon: "◈" },
-  { href: "/publicar/item", label: "Publicar ítem", icon: "⚔" },
-  { href: "/publicar/coins", label: "Publicar coins", icon: "◉" },
-  { href: "/publicar/servicio", label: "Publicar servicio", icon: "✦" },
-  { href: "/publicar/otro", label: "Publicar otro", icon: "✚" },
+  { href: "/publicar/cuenta", label: "Publicar cuenta", icon: "♜", img: "/lu4/icono-cuentas.webp" },
+  { href: "/publicar/adena", label: "Publicar adena", icon: "◈", img: "/lu4/icono-adena.webp" },
+  { href: "/publicar/item", label: "Publicar ítem", icon: "⚔", img: "/lu4/icono-items.webp" },
+  { href: "/publicar/coins", label: "Publicar coins", icon: "◉", img: "/lu4/icono-coins.webp" },
+  { href: "/publicar/servicio", label: "Publicar servicio", icon: "✦", img: "/lu4/icono-servicios.webp" },
+  { href: "/publicar/otro", label: "Publicar otro", icon: "✚", img: "/lu4/icono-otros.webp" },
 ];
 
 export function Logo() {
@@ -78,7 +79,7 @@ export async function Header() {
             <div className="absolute right-0 mt-2 w-56 animate-fade-up rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
               {PUBLISH_OPTIONS.map((o) => (
                 <Link key={o.href} href={o.href} className={`${menuItem} flex items-center gap-3`}>
-                  <span className="grid h-7 w-7 place-items-center rounded-lg border border-gold/30 bg-gold/10 text-gold-2">{o.icon}</span>
+                  <Image src={o.img} alt="" width={32} height={32} className="h-8 w-8" />
                   {o.label}
                 </Link>
               ))}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { signIn } from "@/app/actions/auth";
+import { AuthShell } from "@/components/auth-shell";
 import { SubmitButton } from "@/components/submit-button";
 import { Flash } from "@/components/ui";
 
@@ -10,10 +11,11 @@ export default async function LoginPage(props: PageProps<"/ingresar">) {
   const sp = await props.searchParams;
   const next = typeof sp.siguiente === "string" ? sp.siguiente : "/";
   return (
-    <div className="mx-auto max-w-sm">
+    <AuthShell title="Volviste, aventurero" subtitle="Tus compras, ventas y mensajes te esperan.">
+      <div className="mx-auto max-w-sm">
       <h1 className="h1 mb-4">Ingresar</h1>
       <Flash error={sp.error} ok={sp.ok} />
-      <form action={signIn} className="card space-y-4">
+      <form action={signIn} className="space-y-4">
         <input type="hidden" name="siguiente" value={next} />
         <div>
           <label className="label" htmlFor="email">Email</label>
@@ -32,5 +34,6 @@ export default async function LoginPage(props: PageProps<"/ingresar">) {
         ¿No tenés cuenta? <Link href="/registrarse" className="font-semibold text-brand">Creala gratis</Link>
       </p>
     </div>
+      </AuthShell>
   );
 }

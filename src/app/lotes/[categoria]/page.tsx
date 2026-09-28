@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AutoForm } from "@/components/auto-form";
 import { LotList } from "@/components/lot-list";
 import { EmptyState } from "@/components/ui";
+import { categoryIcon, HERO } from "@/lib/assets";
 import { getCatalog, getRatings, LOT_SELECT, type LotRow } from "@/lib/catalog";
 import { EQUIPMENT, onlineCutoffISO, RACES } from "@/lib/lu4";
 import { parseARSToCents } from "@/lib/money";
@@ -96,17 +98,27 @@ export default async function LotsPage(props: PageProps<"/lotes/[categoria]">) {
 
   return (
     <div className="space-y-6">
-      <div className="animate-fade-up flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold tracking-[0.2em] text-gold uppercase">Lineage 2 LU4</p>
-          <h1 className="h1 mt-1">{category?.name ?? "Todas las ofertas"}</h1>
-          {category?.description && <p className="mt-1 max-w-2xl text-sm text-muted">{category.description}</p>}
+      <div className="relative left-1/2 -mt-6 w-screen -translate-x-1/2 overflow-hidden border-b border-gold/20 sm:-mt-8">
+        <Image src={HERO.siege} alt="" fill priority sizes="100vw" className="object-cover object-[80%_40%]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgb(10_9_16/0.96)_0%,rgb(10_9_16/0.8)_45%,rgb(10_9_16/0.3)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_40%,var(--bg)_100%)]" />
+        <div className="relative mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4 px-4 pt-12 pb-10 sm:pt-16">
+          <div className="animate-fade-up flex items-center gap-4">
+            {category && categoryIcon(category.slug) && (
+              <Image src={categoryIcon(category.slug)!} alt="" width={88} height={88} className="icon-float hidden h-20 w-20 drop-shadow-[0_8px_24px_rgb(0_0_0/0.7)] sm:block" />
+            )}
+            <div>
+              <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Lineage 2 · Lu4.org</p>
+              <h1 className="mt-1 font-display text-3xl font-extrabold tracking-wide drop-shadow-lg sm:text-5xl">{category?.name ?? "Todas las ofertas"}</h1>
+              {category?.description && <p className="mt-2 max-w-2xl text-sm text-ink/80">{category.description}</p>}
+            </div>
+          </div>
+          {category && (
+            <Link href={`/publicar/${PUBLISH_SLUG[category.slug] ?? ""}`} className="btn-primary shine">
+              + Vender {category.name.toLowerCase()}
+            </Link>
+          )}
         </div>
-        {category && (
-          <Link href={`/publicar/${PUBLISH_SLUG[category.slug] ?? ""}`} className="btn-ghost">
-            + Vender {category.name.toLowerCase()}
-          </Link>
-        )}
       </div>
 
       {/* Burbujas de categorías con cantidad de ofertas */}
@@ -118,15 +130,20 @@ export default async function LotsPage(props: PageProps<"/lotes/[categoria]">) {
             <Link
               key={c.slug}
               href={href({}, `/lotes/${c.slug}`)}
-              className={`group grid h-24 w-24 shrink-0 animate-fade-up place-items-center rounded-full border text-center transition duration-300 sm:h-28 sm:w-28 ${
+              className={`group relative grid h-28 w-28 shrink-0 animate-fade-up place-items-center overflow-hidden rounded-full border text-center transition duration-300 sm:h-32 sm:w-32 ${
                 active
                   ? "border-gold bg-gradient-to-br from-gold-2 to-gold text-gold-ink shadow-[0_0_30px_-6px_rgb(217_171_82/0.8)]"
                   : "border-line bg-surface-2/70 hover:-translate-y-1 hover:border-gold/50"
               }`}
               style={{ "--i": i } as React.CSSProperties}
             >
-              <span>
-                <span className={`block px-2 text-sm font-bold leading-tight ${active ? "" : "text-gold-2"}`}>{c.name}</span>
+              <span className="flex flex-col items-center">
+                {categoryIcon(c.slug) ? (
+                  <Image src={categoryIcon(c.slug)!} alt="" width={48} height={48} className="mb-1 h-11 w-11 drop-shadow-[0_4px_10px_rgb(0_0_0/0.5)] transition duration-300 group-hover:scale-110 sm:h-12 sm:w-12" />
+                ) : (
+                  <span className="mb-1 text-2xl">✦</span>
+                )}
+                <span className={`block px-2 text-xs font-bold leading-tight sm:text-sm ${active ? "" : "text-gold-2"}`}>{c.name}</span>
                 <span className={`block text-xs ${active ? "text-gold-ink/70" : "text-muted"}`}>{n}</span>
               </span>
             </Link>

@@ -1,4 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
+import { serverEmblem } from "@/lib/assets";
 import type { LotRow, Rating } from "@/lib/catalog";
 import { accountAge, formatQty, isOnline, raceLabel } from "@/lib/lu4";
 import { formatARS } from "@/lib/money";
@@ -79,9 +81,14 @@ export function LotList({
               <Link href={`/ofertas/${l.id}`} className="absolute inset-0 z-0" aria-label={l.title} />
               <span className="pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-gold opacity-0 transition group-hover:opacity-100" />
               <div className="pointer-events-none grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 px-4 py-4 transition group-hover:bg-gold/[0.04] md:grid-cols-[110px_1fr_200px_120px_130px] md:items-center md:gap-4 md:px-5">
-                <span className="col-span-2 flex items-center gap-2 md:col-span-1 md:block">
-                  <span className="text-sm font-semibold text-gold-2">{l.server?.name ?? "Todos"}</span>
-                  <span className="text-xs text-muted md:block">Lu4 · {l.category?.name}</span>
+                <span className="col-span-2 flex items-center gap-2 md:col-span-1">
+                  {serverEmblem(l.server?.name) && (
+                    <Image src={serverEmblem(l.server?.name)!} alt="" width={30} height={30} className="h-7 w-7 shrink-0 drop-shadow" />
+                  )}
+                  <span className="flex items-center gap-2 md:block">
+                    <span className="block text-sm font-semibold text-gold-2">{l.server?.name ?? "Todos"}</span>
+                    <span className="block text-xs text-muted">{l.category?.name}</span>
+                  </span>
                 </span>
                 <span className="col-span-2 min-w-0 md:col-span-1">
                   <span className="line-clamp-2 text-sm group-hover:text-gold-2">

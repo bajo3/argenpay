@@ -266,3 +266,34 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Íconos flotando suavemente */
+@keyframes icon-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(-2deg);
+  }
+}
+.icon-float {
+  animation: icon-float 4.5s ease-in-out infinite;
+}
+.group:hover .icon-float {
+  animation-duration: 1.6s;
+  filter: drop-shadow(0 0 18px rgb(217 171 82 / 0.55));
+}
+
+/* El video de portada se oculta si el usuario prefiere menos movimiento (queda la imagen) */
+@media (prefers-reduced-motion: reduce) {
+  .hero-video {
+    display: none;
+  }
+}
+
+/* Ornamento dorado para separadores */
+.ornament {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}

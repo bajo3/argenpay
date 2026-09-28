@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Flash } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Publicar" };
 
 const OPTIONS = [
-  { href: "/publicar/cuenta", title: "Publicar cuenta", desc: "Personajes con raza, clase, nivel y equipo.", icon: "♜" },
-  { href: "/publicar/adena", title: "Publicar adena", desc: "Vendé por kk, con compra mínima y entrega por servidor.", icon: "◈" },
-  { href: "/publicar/item", title: "Publicar ítem", desc: "Armas, armaduras, joyas, recetas y materiales.", icon: "⚔" },
-  { href: "/publicar/coins", title: "Publicar coins", desc: "Moneda de donación del servidor.", icon: "◉" },
-  { href: "/publicar/servicio", title: "Publicar servicio", desc: "Boosting, leveo, quests de profesión, farm o acompañamiento.", icon: "✦" },
-  { href: "/publicar/otro", title: "Publicar otro", desc: "Todo lo que no entra en las demás categorías.", icon: "✚" },
+  { href: "/publicar/cuenta", title: "Publicar cuenta", desc: "Personajes con raza, clase, nivel y equipo.", icon: "/lu4/icono-cuentas.webp" },
+  { href: "/publicar/adena", title: "Publicar adena", desc: "Vendé por kk, con compra mínima y entrega por servidor.", icon: "/lu4/icono-adena.webp" },
+  { href: "/publicar/item", title: "Publicar ítem", desc: "Armas, armaduras, joyas, recetas y materiales.", icon: "/lu4/icono-items.webp" },
+  { href: "/publicar/coins", title: "Publicar coins", desc: "Moneda de donación del servidor.", icon: "/lu4/icono-coins.webp" },
+  { href: "/publicar/servicio", title: "Publicar servicio", desc: "Boosting, leveo, quests de profesión, farm o acompañamiento.", icon: "/lu4/icono-servicios.webp" },
+  { href: "/publicar/otro", title: "Publicar otro", desc: "Todo lo que no entra en las demás categorías.", icon: "/lu4/icono-otros.webp" },
 ];
 
 export default async function PublishIndex(props: PageProps<"/publicar">) {
@@ -25,9 +26,7 @@ export default async function PublishIndex(props: PageProps<"/publicar">) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {OPTIONS.map((o, i) => (
           <Link key={o.href} href={o.href} className="card card-hover animate-fade-up group flex items-start gap-4 p-6" style={{ "--i": i } as React.CSSProperties}>
-            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-gold/30 bg-gold/10 text-2xl text-gold-2 transition group-hover:scale-110 group-hover:rotate-6">
-              {o.icon}
-            </span>
+            <Image src={o.icon} alt="" width={72} height={72} className="icon-float h-16 w-16 shrink-0 drop-shadow-[0_6px_16px_rgb(0_0_0/0.6)]" style={{ animationDelay: `${i * 0.3}s` }} />
             <span>
               <span className="block font-display text-xl font-bold group-hover:text-gold-2">{o.title}</span>
               <span className="mt-1 block text-sm text-muted">{o.desc}</span>
