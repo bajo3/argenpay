@@ -62,7 +62,7 @@ export default async function AdminPage(props: PageProps<"/admin">) {
       .order("created_at"),
     supabase
       .from("manual_payments")
-      .select("id, order_id, method, reference, payer_name, note, proof_path, created_at, order:orders(price_cents, listing_snapshot), buyer:profiles!manual_payments_buyer_id_fkey(display_name)")
+      .select("id, order_id, purpose, method, reference, payer_name, note, proof_path, declared_amount, declared_currency, amount_cents, created_at, order:orders(price_cents, listing_snapshot), buyer:profiles!manual_payments_buyer_id_fkey(display_name)")
       .eq("status", "pendiente")
       .order("created_at"),
     getManualPaymentSettings(),
@@ -153,8 +153,53 @@ export default async function AdminPage(props: PageProps<"/admin">) {
         {!manualOn && <p className="text-sm text-muted">El modo de pago manual no está activo (PAYMENTS_PROVIDER=manual).</p>}
         {manualPending.data?.length ? (
           manualPending.data.map((m) => {
-            const ord = m.order as unknown as { price_cents: number; listing_snapshot: { title: string } };
+            const ord = m.order as unknown as { price_cents: number; listing_snapshot: { title: string } } | null;
             const buyer = m.buyer as unknown as { display_name: string } | null;
+            const arrived = matchedByPayment.get(m.id);
+            if (m.purpose === "carga" || !ord) {
+              const declared = m.declared_currency === "ARS" ? formatARS(Math.round(Number(m.declared_amount) * 100)) : `${Number(m.declared_amount)} ${m.declared_currency}`;
+              return (
+                <div key={m.id} className="card space-y-3 border-gold/40">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold">Carga de saldo · {buyer?.display_name}</p>
+                    <span className="font-display text-xl font-bold text-gold-2">{declared}</span>
+                  </div>
+                  <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                    <div><dt className="inline text-muted">Medio: </dt><dd className="inline">{METHOD_LABEL[m.method] ?? m.method}</dd></div>
+                    <div><dt className="inline text-muted">Avisado: </dt><dd className="inline">{formatDate(m.created_at)}</dd></div>
+                    <div className="sm:col-span-2"><dt className="inline text-muted">Referencia / TXID: </dt><dd className="inline font-mono break-all select-all">{m.reference}</dd></div>
+                    {m.payer_name && <div><dt className="inline text-muted">Pagador: </dt><dd className="inline">{m.payer_name}</dd></div>}
+                    {m.note && <div className="sm:col-span-2"><dt className="inline text-muted">Comentario: </dt><dd className="inline">{m.note}</dd></div>}
+                    {proofUrls.get(m.id) && <div><a href={proofUrls.get(m.id)} target="_blank" rel="noopener noreferrer" className="text-gold underline">Ver comprobante</a></div>}
+                  </dl>
+                  {arrived ? (
+                    <p className="rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok">✓ Llegó a Binance: {depositAmount(arrived)} el {formatDate(arrived.occurred_at)}.</p>
+                  ) : (
+                    <p className="hint">Todavía no detectamos este ingreso en Binance. Verificá a mano antes de acreditar.</p>
+                  )}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <form action={reviewManualPayment} className="flex flex-wrap items-end gap-2">
+                      <input type="hidden" name="payment_id" value={m.id} />
+                      <input type="hidden" name="decision" value="aprobar" />
+                      <input type="hidden" name="purpose" value="carga" />
+                      <div className="min-w-40 flex-1">
+                        <label className="label" htmlFor={`credit-${m.id}`}>Pesos a acreditar</label>
+                        <input id={`credit-${m.id}`} name="credit" required inputMode="decimal" className="input font-semibold tabular-nums" defaultValue={m.amount_cents ? centsToInput(Number(m.amount_cents)) : ""} placeholder="15.000,00" />
+                      </div>
+                      <SubmitButton className="btn-primary shine" confirmTitle="¿Acreditar la carga?" confirmLabel="Sí, acreditar" confirm="El importe entra al saldo del usuario y lo puede usar al instante. Verificá que el dinero haya llegado.">
+                        Acreditar
+                      </SubmitButton>
+                    </form>
+                    <form action={reviewManualPayment} className="flex gap-2 self-end">
+                      <input type="hidden" name="payment_id" value={m.id} />
+                      <input type="hidden" name="decision" value="rechazar" />
+                      <input name="note" required placeholder="Motivo (lo ve el usuario)" className="input" />
+                      <SubmitButton className="btn-danger shrink-0" danger confirmTitle="¿Rechazar la carga?" confirmLabel="Sí, rechazar" confirm="El usuario ve el motivo en su página de saldo.">Rechazar</SubmitButton>
+                    </form>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={m.id} className="card space-y-3 border-gold/40">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -289,9 +334,12 @@ export default async function AdminPage(props: PageProps<"/admin">) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="label" htmlFor="usd_rate">Cotización de referencia del dólar (ARS, opcional)</label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="usd_rate_auto" defaultChecked={manualSettings.usdRateAuto} /> Actualizar sola con el dólar cripto (cada 5 min)
+              </label>
+              <label className="label mt-2" htmlFor="usd_rate">Cotización del dólar (ARS por 1 USD)</label>
               <input id="usd_rate" name="usd_rate" className="input" inputMode="decimal" placeholder="1.200,00" defaultValue={manualSettings.usdRateCents ? centsToInput(manualSettings.usdRateCents) : ""} />
-              <p className="hint">Se usa solo para mostrar el equivalente en USDT/USDC. Actualizala cuando cambie.</p>
+              <p className="hint">Se usa para mostrar precios en USD y convertir las cargas en USDT/USDC. Si la actualización automática está activa, este valor se ignora.</p>
             </div>
           </div>
           <div>
@@ -357,10 +405,17 @@ export default async function AdminPage(props: PageProps<"/admin">) {
                     <p className="text-xs text-muted">{formatDate(w.created_at)}</p>
                   </div>
                   <p className="font-display text-xl font-bold text-gold-2">{formatARS(Number(w.amount_cents))}</p>
-                  <form action={processWithdrawal}>
+                  <form action={processWithdrawal} className="flex gap-2">
                     <input type="hidden" name="withdrawal_id" value={w.id} />
                     <input type="hidden" name="decision" value="aprobar" />
-                    <SubmitButton confirm="¿Transferir este retiro? (simulado)">Pagar</SubmitButton>
+                    {manualOn && <input name="reference" required minLength={4} placeholder="Nº de comprobante" className="input w-40" />}
+                    <SubmitButton
+                      confirmTitle={manualOn ? "¿Ya transferiste este retiro?" : "¿Pagar el retiro?"}
+                      confirmLabel={manualOn ? "Sí, ya transferí" : "Sí, pagar"}
+                      confirm={manualOn ? "Confirmá que ya le transferiste el importe al CBU/CVU del usuario. Queda registrado como pagado." : "¿Transferir este retiro? (simulado)"}
+                    >
+                      {manualOn ? "Marcar pagado" : "Pagar"}
+                    </SubmitButton>
                   </form>
                   <form action={processWithdrawal} className="flex gap-2">
                     <input type="hidden" name="withdrawal_id" value={w.id} />

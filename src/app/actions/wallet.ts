@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { parseARSToCents } from "@/lib/money";
+import { getPaymentsConfig } from "@/lib/config";
 import { getPaymentProvider } from "@/lib/payments";
 import { createSimulatedDeposit } from "@/lib/payments/simulated";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -15,7 +16,7 @@ const MAX_DEPOSIT_CENTS = 100_000_000; // $ 1.000.000 por carga
 /** Carga de saldo: crea un cobro en el procesador (simulado) y redirige a su checkout. */
 export async function startDeposit(formData: FormData) {
   const s = await requireUser("/saldo");
-  if (!walletEnabled()) fail("/saldo", "El saldo no está disponible");
+  if (getPaymentsConfig().mode !== "simulado") fail("/saldo", "Cargá saldo con una transferencia desde esta página");
   const cents = parseARSToCents(str(formData, "amount"));
   if (cents === null || cents < 100) fail("/saldo", "Ingresá un importe válido (mínimo $ 1,00)");
   if (cents > MAX_DEPOSIT_CENTS) fail("/saldo", "El máximo por carga es $ 1.000.000");
@@ -62,7 +63,12 @@ export async function processWithdrawal(formData: FormData) {
   if (!w || w.status !== "pendiente") fail("/admin", "El retiro ya fue procesado");
 
   let providerRef: string | null = null;
-  if (approve) {
+  if (approve && getPaymentsConfig().mode === "manual") {
+    // Modo manual: el administrador ya transfirió por fuera y deja el comprobante.
+    const reference = str(formData, "reference");
+    if (reference.length < 4) fail("/admin", "Indicá el número de comprobante de la transferencia");
+    providerRef = `manual:${reference}`;
+  } else if (approve) {
     const provider = getPaymentProvider();
     if (!provider?.payouts) fail("/admin", "El proveedor configurado no admite transferencias automáticas");
     try {

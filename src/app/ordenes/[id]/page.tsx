@@ -15,7 +15,6 @@ import { getPaymentsConfig } from "@/lib/config";
 import { findConversation, getMessages } from "@/lib/conversations";
 import { getManualPaymentSettings } from "@/lib/manual-payments";
 import { formatQty, raceLabel } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
 import {
   availableUserActions,
   isAllowed,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/orders/state-machine";
 import { createClient } from "@/lib/supabase/server";
 import { getMyWallet } from "@/lib/wallet";
+import { Money } from "@/components/money";
 
 export const metadata: Metadata = { title: "Orden" };
 
@@ -84,7 +84,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   const showManual = o.buyer_id === s.userId && o.status === "pendiente_pago" && o.payment_mode === "manual" && getPaymentsConfig().mode === "manual";
   const [messages, wallet, manualSettings, manualReports] = await Promise.all([
     conversationId ? getMessages(conversationId) : Promise.resolve([]),
-    o.buyer_id === s.userId && o.status === "pendiente_pago" && o.payment_mode === "simulado" ? getMyWallet() : Promise.resolve(null),
+    o.buyer_id === s.userId && o.status === "pendiente_pago" && (o.payment_mode === "simulado" || o.payment_mode === "manual") ? getMyWallet() : Promise.resolve(null),
     showManual ? getManualPaymentSettings() : Promise.resolve(null),
     showManual
       ? supabase.from("manual_payments").select("id, method, reference, status, admin_note, created_at").eq("order_id", id).order("id", { ascending: false })
@@ -102,8 +102,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   const role: Actor = o.buyer_id === s.userId ? "comprador" : o.seller_id === s.userId ? "vendedor" : "admin";
   const actions = availableUserActions(o, role);
   const cfg = getPaymentsConfig();
-  // En pagos manuales el dinero está en la cuenta de Argenpay: solo un administrador puede devolverlo.
-  const canRefund = isAllowed(SYSTEM_TRANSITIONS, "reembolsar", o.status, role) && (o.payment_mode !== "manual" || role === "admin");
+  const canRefund = isAllowed(SYSTEM_TRANSITIONS, "reembolsar", o.status, role);
   const names: Record<string, string> = { [o.buyer_id]: o.buyer?.display_name ?? "Comprador", [o.seller_id]: o.seller?.display_name ?? "Vendedor" };
   const snap = o.listing_snapshot;
   const unit = snap.unit ?? "u.";
@@ -174,6 +173,22 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
             <h2 className="h2">Próximo paso</h2>
             <NextStepText o={o} role={role} />
 
+            {showManual && wallet && (
+              <form action={payWithBalance} className="flex flex-wrap items-center gap-3 rounded-xl border border-gold/40 bg-gold/5 p-4">
+                <input type="hidden" name="order_id" value={o.id} />
+                <div className="min-w-48 flex-1">
+                  <p className="text-sm font-semibold">Pagar con tu saldo (al instante)</p>
+                  <p className="text-xs text-muted">Disponible: <Money cents={wallet.available} /></p>
+                </div>
+                {wallet.available >= Number(o.price_cents) ? (
+                  <SubmitButton className="btn-primary shine" pendingText="Pagando…">Pagar <Money cents={Number(o.price_cents)} /></SubmitButton>
+                ) : (
+                  <Link href="/saldo" className="btn-ghost">Cargar saldo</Link>
+                )}
+              </form>
+            )}
+            {showManual && wallet && <p className="text-center text-xs tracking-wide text-muted uppercase">o transferí directo para esta orden</p>}
+
             {showManual && manualSettings && (
               <ManualPaymentPanel
                 orderId={o.id}
@@ -190,9 +205,9 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                   <form action={payWithBalance} className="rounded-xl border border-gold/30 bg-gold/5 p-4">
                     <input type="hidden" name="order_id" value={o.id} />
                     <p className="text-sm font-semibold">Pagar con saldo</p>
-                    <p className="mb-3 text-xs text-muted">Disponible: {formatARS(wallet.available)}</p>
+                    <p className="mb-3 text-xs text-muted">Disponible: <Money cents={wallet.available} /></p>
                     {wallet.available >= Number(o.price_cents) ? (
-                      <SubmitButton className="btn-primary shine w-full" pendingText="Pagando…">Pagar {formatARS(Number(o.price_cents))}</SubmitButton>
+                      <SubmitButton className="btn-primary shine w-full" pendingText="Pagando…">Pagar <Money cents={Number(o.price_cents)} /></SubmitButton>
                     ) : (
                       <Link href="/saldo" className="btn-ghost w-full">Cargar saldo</Link>
                     )}
@@ -203,7 +218,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                   <p className="text-sm font-semibold">Pagar con el procesador</p>
                   <p className="mb-3 text-xs text-muted">{o.payment_mode === "simulado" ? "Checkout de prueba (simulado)" : "Tarjeta, débito o dinero en cuenta"}</p>
                   <SubmitButton className={wallet ? "btn-ghost w-full" : "btn-primary shine w-full"} pendingText="Redirigiendo…">
-                    Pagar {formatARS(Number(o.price_cents))}
+                    Pagar <Money cents={Number(o.price_cents)} />
                   </SubmitButton>
                 </form>
               </div>
@@ -241,7 +256,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
                 </p>
                 <textarea name="note" required rows={2} className="input" placeholder="Motivo del reembolso" />
                 <SubmitButton className="btn-danger" danger confirmTitle="Reembolsar la orden" confirmLabel="Sí, reembolsar" confirm="Se devuelve el total al comprador. No se puede deshacer.">
-                  Reembolsar {formatARS(Number(o.price_cents))}
+                  Reembolsar <Money cents={Number(o.price_cents)} />
                 </SubmitButton>
               </form>
             )}
@@ -343,17 +358,17 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
           <section className="card text-sm">
             <h2 className="h2 mb-3">Importes</h2>
             <dl className="space-y-1.5">
-              <Row label={`${formatQty(o.quantity, unit, plural)} × ${formatARS(Number(o.unit_price_cents))}`} value={formatARS(Number(o.price_cents))} strong />
+              <Row label={<>{formatQty(o.quantity, unit, plural)} × <Money cents={Number(o.unit_price_cents)} /></>} value={<Money cents={Number(o.price_cents)} />} strong />
               {role !== "comprador" && (
                 <>
-                  <Row label={`Comisión Argenpay (${o.commission_bps / 100}%)`} value={`−${formatARS(Number(o.commission_cents))}`} />
+                  <Row label={`Comisión Argenpay (${o.commission_bps / 100}%)`} value={<>−<Money cents={Number(o.commission_cents)} /></>} />
                   {o.processor_fee_policy === "vendedor_absorbe" ? (
-                    <Row label={`Cargo procesador (${o.processor_fee_bps / 100}%)`} value={`−${formatARS(Number(o.processor_fee_cents))}`} />
+                    <Row label={`Cargo procesador (${o.processor_fee_bps / 100}%)`} value={<>−<Money cents={Number(o.processor_fee_cents)} /></>} />
                   ) : role === "admin" ? (
-                    <Row label={`Cargo procesador (${o.processor_fee_bps / 100}%, absorbe plataforma)`} value={formatARS(Number(o.processor_fee_cents))} />
+                    <Row label={`Cargo procesador (${o.processor_fee_bps / 100}%, absorbe plataforma)`} value={<Money cents={Number(o.processor_fee_cents)} />} />
                   ) : null}
-                  <Row label="Neto vendedor" value={formatARS(Number(o.seller_net_cents))} strong />
-                  {role === "admin" && <Row label="Neto plataforma" value={formatARS(Number(o.platform_net_cents))} />}
+                  <Row label="Neto vendedor" value={<Money cents={Number(o.seller_net_cents)} />} strong />
+                  {role === "admin" && <Row label="Neto plataforma" value={<Money cents={Number(o.platform_net_cents)} />} />}
                 </>
               )}
             </dl>
@@ -402,7 +417,7 @@ export default async function OrderPage(props: PageProps<"/ordenes/[id]">) {
   );
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Row({ label, value, strong }: { label: React.ReactNode; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{label}</dt>
@@ -424,10 +439,7 @@ function NextStepText({ o, role }: { o: Order; role: Actor }) {
     liquidado: { comprador: "Operación cerrada. ¡Gracias por comprar en Argenpay!", vendedor: "El pago se liberó: tu neto ya está en tu saldo." },
   };
   if (o.payment_mode === "manual" && o.status === "pendiente_pago" && role === "comprador") {
-    return <p className="text-sm text-muted">Transferí el importe a los datos de abajo y avisá el pago con el comprobante. Un administrador lo verifica y confirma la orden; hasta entonces el vendedor no entrega.</p>;
-  }
-  if (o.payment_mode === "manual" && o.status === "liquidado" && role === "vendedor") {
-    return <p className="text-sm text-muted">Te transferimos el neto a tu cuenta de cobro. Si no lo ves, escribile a soporte con el número de orden.</p>;
+    return <p className="text-sm text-muted">Pagá con tu saldo al instante, o transferí el importe a los datos de abajo y avisá el pago con el comprobante (un administrador lo verifica). Hasta que el pago esté confirmado el vendedor no entrega.</p>;
   }
   const text = t[o.status]?.[role] ?? `Estado: ${STATUS_LABELS[o.status]}.`;
   return <p className="text-sm text-muted">{text}</p>;

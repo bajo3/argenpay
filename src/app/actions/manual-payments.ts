@@ -1,5 +1,5 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { getPaymentsConfig } from "@/lib/config";
 import { formatARS, parseARSToCents } from "@/lib/money";
@@ -43,22 +43,60 @@ export async function reportManualPayment(formData: FormData) {
   done(back, "Listo, avisamos tu pago. Lo verificamos y te confirmamos por acá.");
 }
 
-/** Administrador: aprueba (confirma la orden) o rechaza un aviso de pago. */
+/** Carga de saldo: el usuario avisa que transfirió pesos o envió USDT/USDC. La acredita un administrador. */
+export async function reportTopup(formData: FormData) {
+  const back = "/saldo";
+  const s = await requireUser(back);
+  if (getPaymentsConfig().mode !== "manual") fail(back, "Las cargas por transferencia no están habilitadas");
+  const method = str(formData, "method");
+  if (!METHODS.includes(method)) fail(back, "Elegí cómo enviaste el dinero");
+  const currency = ["cvu"].includes(method) ? "ARS" : method === "btc" ? "BTC" : method === "usdc" ? "USDC" : str(formData, "currency") === "ARS" ? "ARS" : "USDT";
+  const raw = str(formData, "amount").replace(/s|$|US/gi, "");
+  // Pesos: "15.000,50". Cripto: admite "10.5" o "10,5".
+  const amount = currency === "ARS" ? (parseARSToCents(raw) ?? 0) / 100 : Number(raw.replace(",", "."));
+  if (!Number.isFinite(amount) || amount <= 0) fail(back, "Ingresá el importe que enviaste");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("report_topup", {
+    p_method: method,
+    p_currency: currency,
+    p_amount: amount,
+    p_reference: str(formData, "reference"),
+    p_payer_name: str(formData, "payer_name") || undefined,
+    p_note: str(formData, "note") || undefined,
+    p_proof_path: str(formData, "proof_path") || undefined,
+  });
+  if (error) fail(back, error.message);
+
+  await notifyAdmin({
+    title: "💸 Carga de saldo para verificar",
+    body: `${currency === "ARS" ? formatARS(Math.round(amount * 100)) : `${amount} ${currency}`} · ${METHOD_LABEL[method] ?? method} · ${s.profile.display_name}`,
+    link: "/admin#pagos-manuales",
+  }).catch(() => []);
+  revalidatePath(back);
+  done(back, "Listo, avisamos tu carga. Cuando la verifiquemos se acredita en tu saldo.");
+}
+
+/** Administrador: aprueba (confirma la orden o acredita la carga) o rechaza un aviso de pago. */
 export async function reviewManualPayment(formData: FormData) {
   const admin = await requireAdmin();
   const id = Number(str(formData, "payment_id"));
   const approve = str(formData, "decision") === "aprobar";
   if (!Number.isSafeInteger(id) || id < 1) fail("/admin", "Aviso inválido");
+  const creditRaw = str(formData, "credit");
+  const credit = creditRaw ? parseARSToCents(creditRaw) : null;
+  if (creditRaw && (credit === null || credit < 100)) fail("/admin#pagos-manuales", "Importe a acreditar inválido");
   const db = createAdminClient();
   const { error } = await db.rpc("sys_review_manual_payment", {
     p_payment_id: id,
     p_approve: approve,
     p_admin_id: admin.userId,
     p_note: str(formData, "note") || undefined,
+    p_credit_cents: credit ?? undefined,
   });
   if (error) fail("/admin#pagos-manuales", error.message);
   revalidatePath("/admin");
-  done("/admin#pagos-manuales", approve ? "Pago confirmado: el vendedor ya puede entregar" : "Aviso rechazado y comprador notificado");
+  done("/admin#pagos-manuales", approve ? (credit !== null || str(formData, "purpose") === "carga" ? "Carga acreditada en el saldo del usuario" : "Pago confirmado: el vendedor ya puede entregar") : "Aviso rechazado");
 }
 
 /** Administrador: guarda los datos de cobro que ven los compradores. */
@@ -104,7 +142,8 @@ export async function saveManualPaymentSettings(formData: FormData) {
       binance_pay_id: binancePayId,
       binance_email: clean("binance_email", 120),
       crypto_wallets: wallets.filter((w) => w.address),
-      usd_rate_cents: usdRateCents,
+      usd_rate_auto: formData.get("usd_rate_auto") === "on",
+      ...(formData.get("usd_rate_auto") === "on" ? {} : { usd_rate_cents: usdRateCents, usd_rate_updated_at: new Date().toISOString() }),
       instructions: clean("instructions", 1500),
       ...(qrPath ? { qr_path: qrPath } : {}),
       ...(formData.get("remove_qr") === "on" ? { qr_path: null } : {}),
@@ -114,5 +153,6 @@ export async function saveManualPaymentSettings(formData: FormData) {
   if (error) fail(back, errorMessage(error));
   revalidatePath("/admin");
   revalidatePath("/ordenes", "layout");
+  revalidateTag("usd-rate", { expire: 0 });
   done(back, configured ? "Datos de cobro guardados y marcados como definitivos" : "Datos guardados (siguen en modo ejemplo)");
 }

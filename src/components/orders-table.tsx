@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { formatARS } from "@/lib/money";
+
 import type { OrderStatus } from "@/lib/orders/state-machine";
 import { formatDate, shortId, StatusBadge } from "./ui";
+import { Money } from "@/components/money";
 
 export interface OrderListRow {
   id: string;
@@ -43,7 +44,7 @@ export function OrdersTable({ rows, amount = "price" }: { rows: OrderListRow[]; 
               </td>
               <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
               <td className="px-4 py-3 text-right font-semibold">
-                {formatARS(Number(amount === "net" ? o.seller_net_cents : o.price_cents))}
+                <Money cents={Number(amount === "net" ? o.seller_net_cents : o.price_cents)} />
               </td>
               <td className="px-4 py-3 text-muted">{formatDate(o.created_at)}</td>
             </tr>

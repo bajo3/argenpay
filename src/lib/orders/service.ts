@@ -104,29 +104,8 @@ export async function refundOrder(orderId: string, userId: string, note: string)
   if (!note.trim()) throw new OrderError("Indicá el motivo del reembolso");
   if (!modeMatches(order) || !order.payment_provider) throw new OrderError("La orden no pertenece al modo de pagos activo");
 
-  // Pago manual: el dinero está en la cuenta de Argenpay, así que solo un administrador puede devolverlo
-  // (por transferencia) y dejarlo registrado. El vendedor no tiene cómo hacerlo.
-  if (order.payment_mode === "manual") {
-    if (actor !== "admin") {
-      throw new OrderError("En pagos por transferencia el reembolso lo registra un administrador tras devolver el dinero. Escribile a soporte.");
-    }
-    const db = createAdminClient();
-    const { error } = await db.rpc("sys_record_refund", {
-      p_order_id: order.id,
-      p_provider: "manual",
-      p_provider_ref: `reembolso:${order.id}`,
-      p_amount_cents: order.price_cents,
-      p_raw: { manual: true },
-      p_actor_id: userId,
-      p_actor_role: actor,
-      p_note: note.trim(),
-    });
-    if (error) throw new OrderError(error.message);
-    return;
-  }
-
-  // Pagada con saldo: el reembolso vuelve al saldo del comprador.
-  if (order.payment_provider === "saldo") {
+  // Pagada con saldo, o por transferencia verificada (modo manual): el reembolso vuelve al saldo del comprador.
+  if (order.payment_provider === "saldo" || order.payment_mode === "manual") {
     const db = createAdminClient();
     const { error } = await db.rpc("sys_refund_to_wallet", {
       p_order_id: order.id,

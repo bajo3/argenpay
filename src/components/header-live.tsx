@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { alarmEnabled, playAlarm, systemNotify } from "@/lib/alarm";
 import { formatARS } from "@/lib/money";
+import { useMoney } from "./money";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "./seller-badge";
 
@@ -63,6 +64,7 @@ export function HeaderLive({
   initialAdminPending?: number | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const money = useMoney();
   const router = useRouter();
   const pathname = usePathname();
   const pathRef = useRef(pathname);
@@ -203,7 +205,13 @@ export function HeaderLive({
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversation_messages" }, (payload) =>
         void onMessageRef.current(payload.new as IncomingMessage),
       )
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "wallet_entries", filter: `user_id=eq.${userId}` }, () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "wallet_entries", filter: `user_id=eq.${userId}` }, (payload) => {
+        const e = payload.new as { kind?: string; amount_cents?: number };
+        if (e.kind === "carga") {
+          pushToastRef.current({ href: "/saldo", title: "✅ Se acreditó tu carga", body: `+${formatARS(Number(e.amount_cents ?? 0))} en tu saldo`, system: true });
+        } else if (e.kind === "venta") {
+          pushToastRef.current({ href: "/saldo", title: "💰 Venta liberada", body: `+${formatARS(Number(e.amount_cents ?? 0))} en tu saldo`, system: true });
+        }
         void refreshCounters();
         if (pathRef.current === "/saldo") softRefresh();
       });
@@ -392,8 +400,8 @@ export function HeaderLive({
       )}
 
       {balance !== null && (
-        <Link href="/saldo" className="hidden rounded-lg border border-gold/25 bg-gold/5 px-2.5 py-1.5 text-sm font-semibold text-gold-2 tabular-nums transition hover:bg-gold/15 sm:block" title="Tu saldo (simulado)">
-          {formatARS(balance)}
+        <Link href="/saldo" className="hidden rounded-lg border border-gold/25 bg-gold/5 px-2.5 py-1.5 text-sm font-semibold text-gold-2 tabular-nums transition hover:bg-gold/15 sm:block" title="Tu saldo">
+          {money.format(balance)}
         </Link>
       )}
 

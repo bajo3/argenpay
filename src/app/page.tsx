@@ -9,8 +9,9 @@ import { EmptyState } from "@/components/ui";
 import { categoryIcon, HERO, serverEmblem } from "@/lib/assets";
 import { getCatalog, getRatings, LOT_SELECT, type LotRow } from "@/lib/catalog";
 import { onlineCutoffISO } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
+
 import { createClient } from "@/lib/supabase/server";
+import { Money } from "@/components/money";
 
 const HAS_VIDEO = existsSync(join(process.cwd(), "public", HERO.video));
 
@@ -145,7 +146,7 @@ export default async function Home() {
                   <span className="block font-display text-lg font-bold group-hover:text-gold-2">{c.name}</span>
                   <span className="mt-0.5 hidden text-sm text-muted sm:block">{c.description}</span>
                   <span className="mt-2 block text-sm text-muted">
-                    {rows.length} {rows.length === 1 ? "oferta" : "ofertas"}{min !== null && <> · desde <span className="font-semibold text-gold-2">{formatARS(min)}</span></>}
+                    {rows.length} {rows.length === 1 ? "oferta" : "ofertas"}{min !== null && <> · desde <span className="font-semibold text-gold-2"><Money cents={min} /></span></>}
                   </span>
                 </span>
               </Link>

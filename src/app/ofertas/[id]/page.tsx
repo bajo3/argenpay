@@ -11,8 +11,9 @@ import { getSessionProfile } from "@/lib/auth";
 import { getRatings } from "@/lib/catalog";
 import { getPaymentsConfig } from "@/lib/config";
 import { formatQty, isOnline, lastSeenLabel, raceLabel } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
+
 import { createClient } from "@/lib/supabase/server";
+import { Money } from "@/components/money";
 
 interface Listing {
   id: string; seller_id: string; title: string; description: string; conditions: string;
@@ -102,7 +103,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
             </div>
             <h1 className="h1 mt-3">{l.title}</h1>
             <p className="mt-2 font-display text-3xl font-bold text-gold-2 lg:hidden">
-              {formatARS(Number(l.price_cents))} <span className="text-base font-normal text-muted">/ {unit}</span>
+              <Money cents={Number(l.price_cents)} /> <span className="text-base font-normal text-muted">/ {unit}</span>
             </p>
             <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {attrs.map(([k, v]) => (
@@ -154,7 +155,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
             <span className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-gold/15 blur-3xl animate-glow" />
             <div className="relative">
               <p className="hidden font-display text-3xl font-bold text-gold-2 lg:block">
-                {formatARS(Number(l.price_cents))} <span className="text-base font-normal text-muted">/ {unit}</span>
+                <Money cents={Number(l.price_cents)} /> <span className="text-base font-normal text-muted">/ {unit}</span>
               </p>
               <div className="mt-4">
                 {isOwner ? (
@@ -214,7 +215,7 @@ export default async function OfferPage(props: PageProps<"/ofertas/[id]">) {
                         <span className="block truncate hover:text-gold-2">{m.title}</span>
                         <span className="text-xs text-muted">{m.server?.name ?? "Todos"}</span>
                       </span>
-                      <span className="shrink-0 font-semibold text-gold-2">{formatARS(Number(m.price_cents))}<span className="text-xs text-muted">/{m.category?.unit_label}</span></span>
+                      <span className="shrink-0 font-semibold text-gold-2"><Money cents={Number(m.price_cents)} /><span className="text-xs text-muted">/{m.category?.unit_label}</span></span>
                     </Link>
                   </li>
                 ))}

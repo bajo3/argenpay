@@ -303,7 +303,7 @@ const w2 = (await as("authenticated", SELLER, () => one(`select request_withdraw
 await as("authenticated", OTHER, () => db.query(`select * from wallet_entries`).then((r) => (r.rows.length === 0 ? ok("terceros no ven movimientos de saldo ajenos") : bad("tercero ve saldo"))));
 
 const orderReal = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'real') id`, [listing]))).id;
-await as("authenticated", BUYER, () => expectError("pago con saldo en modo real", () => db.query(`select pay_order_with_balance($1)`, [orderReal]), "simulado"));
+await as("authenticated", BUYER, () => expectError("pago con saldo en modo real", () => db.query(`select pay_order_with_balance($1)`, [orderReal]), "no está disponible"));
 
 const review = (await as("anon", null, () => one(`select id from reviews where order_id=$1`, [order2]))).id;
 await as("authenticated", BUYER, () => expectError("comprador responde como vendedor", () => db.query(`select reply_review($1, 'hola')`, [review]), "vendedor"));
@@ -411,15 +411,14 @@ paid.status === "pago_confirmado" && paid.payment_provider === "manual" && paid.
 (await one(`select count(*)::int n from payment_transactions where order_id=$1 and provider='manual' and kind='cobro' and amount_cents=100000`, [mA])).n === 1
   ? ok("cobro manual registrado por el importe exacto de la orden") : bad("payment_transactions manual");
 
-// Flujo completo hasta la liquidación manual.
+// Flujo completo: al confirmar, el neto va al saldo del vendedor (liquidación automática al saldo).
+const sellerPrevManual = Number((await one(`select wallet_available($1) n`, [SELLER])).n);
 await as("authenticated", SELLER, () => db.query(`select order_action($1,'iniciar_entrega',null,null)`, [mA]));
 await as("authenticated", SELLER, () => db.query(`select order_action($1,'marcar_entregado','Adena enviada por trade',null)`, [mA]));
 await as("authenticated", BUYER, () => db.query(`select order_action($1,'confirmar_recepcion',null,null)`, [mA]));
-const net = Number((await one(`select seller_net_cents n from orders where id=$1`, [mA])).n);
-await as("service_role", null, () => expectError("liquidar un importe distinto al neto", () => db.query(`select sys_record_payout($1,'manual','x:TRANSF-1',$2,'{}',$3)`, [mA, net + 1, ADMIN]), "neto"));
-(await as("service_role", null, () => one(`select sys_record_payout($1,'manual','x:TRANSF-1',$2,'{"manual":true}',$3) r`, [mA, net, ADMIN]))).r === "liquidado"
-  ? ok("liquidación manual registrada con su comprobante") : bad("liquidación manual");
-(await one(`select status from orders where id=$1`, [mA])).status === "liquidado" ? ok("orden manual liquidada") : bad("estado final manual");
+const netManual = Number((await one(`select seller_net_cents n from orders where id=$1`, [mA])).n);
+(await one(`select status from orders where id=$1`, [mA])).status === "liquidado" ? ok("orden manual confirmada se liquida sola al saldo") : bad("estado final manual");
+Number((await one(`select wallet_available($1) n`, [SELLER])).n) === sellerPrevManual + netManual ? ok("el vendedor recibe el neto en su saldo") : bad("saldo vendedor manual");
 
 console.log("\nIngresos detectados en Binance");
 const mC = (await as("authenticated", BUYER, () => one(`select create_order($1, 1, 'manual') id`, [mListing]))).id;
@@ -446,6 +445,32 @@ await as("service_role", null, () => db.query(`select sys_deposit_watch_status(n
 await as("service_role", null, () => db.query(`select sys_deposit_watch_status(false, 'Binance caído')`));
 const ws = await one(`select last_run_at is not null ran, last_ok_at, last_error from deposit_watch_state`);
 ws.ran && ws.last_ok_at === null && ws.last_error === "Binance caído" ? ok("el estado del lector registra errores") : bad(`estado lector ${JSON.stringify(ws)}`);
+
+console.log("\nCarga de saldo manual (pesos / USDT)");
+await db.exec(`update manual_payment_settings set usd_rate_cents = 161606`);
+const walletBefore = Number((await one(`select wallet_available($1) n`, [OTHER])).n);
+await as("authenticated", OTHER, () => expectError("carga sin importe", () => db.query(`select report_topup('cvu','ARS',0,'COMP-1')`), "importe"));
+const tArs = (await as("authenticated", OTHER, () => one(`select report_topup('cvu','ARS',5000,'CVU-555-01') id`))).id;
+(await one(`select amount_cents, purpose, order_id from manual_payments where id=$1`, [tArs])).amount_cents == 500000 ? ok("carga en pesos: se calculan los centavos a acreditar") : bad("carga ars");
+const tUsdt = (await as("authenticated", OTHER, () => one(`select report_topup('usdt','USDT',10,'0xTOPUP0001') id`))).id;
+Number((await one(`select amount_cents a from manual_payments where id=$1`, [tUsdt])).a) === 1616060 ? ok("carga en USDT: se convierte con el dólar cripto") : bad("carga usdt");
+Number((await one(`select wallet_available($1) n`, [OTHER])).n) === walletBefore ? ok("avisar una carga no acredita saldo") : bad("aviso acreditó");
+await as("service_role", null, () => db.query(`select sys_review_manual_payment($1, true, $2, null, 1600000)`, [tUsdt, ADMIN]));
+Number((await one(`select wallet_available($1) n`, [OTHER])).n) === walletBefore + 1600000 ? ok("el admin acredita (con importe ajustado) y entra al saldo") : bad("acreditar carga");
+await as("service_role", null, () => expectError("acreditar dos veces", () => db.query(`select sys_review_manual_payment($1, true, $2, null, null)`, [tUsdt, ADMIN]), "ya fue revisado"));
+await as("service_role", null, () => db.query(`select sys_review_manual_payment($1, false, $2, 'No llegó', null)`, [tArs, ADMIN]));
+Number((await one(`select wallet_available($1) n`, [OTHER])).n) === walletBefore + 1600000 ? ok("una carga rechazada no acredita") : bad("rechazo acreditó");
+await as("authenticated", BUYER, () => db.query(`select * from manual_payments where buyer_id=$1`, [OTHER]).then((r) => (r.rows.length === 0 ? ok("nadie ve las cargas de otro usuario") : bad("ve cargas ajenas"))));
+const depT = await rec("pesos:900", "pesos", "ARS", 2500, "900");
+const tArs2 = (await as("authenticated", OTHER, () => one(`select report_topup('cvu','ARS',2500,'CVU-555-02') id`))).id;
+Number((await one(`select matched_payment_id m from incoming_deposits where id=$1`, [depT.deposit_id])).m) === Number(tArs2) ? ok("un ingreso en pesos se cruza con la carga por importe") : bad("cruce carga");
+const mE = (await as("authenticated", OTHER, () => one(`select create_order($1, 1, 'manual') id`, [mListing]))).id;
+await as("authenticated", OTHER, () => db.query(`select pay_order_with_balance($1)`, [mE]));
+(await one(`select status, paid_with from orders where id=$1`, [mE])).status === "pago_confirmado" ? ok("en modo manual se paga una orden con saldo") : bad("pago saldo manual");
+await as("authenticated", SELLER, () => db.query(`select order_action($1,'cancelar',null,null)`, [mE]).catch(() => null));
+const refundBefore = Number((await one(`select wallet_available($1) n`, [OTHER])).n);
+await as("service_role", null, () => db.query(`select sys_refund_to_wallet($1, $2, 'vendedor', 'Sin stock')`, [mE, SELLER]));
+Number((await one(`select wallet_available($1) n`, [OTHER])).n) === refundBefore + 100000 ? ok("el reembolso vuelve al saldo del comprador") : bad("reembolso saldo manual");
 
 console.log(failures ? `\n${failures} verificaciones fallaron` : "\nTodas las verificaciones pasaron");
 process.exit(failures ? 1 : 0);

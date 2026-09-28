@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { createOrder } from "@/app/actions/orders";
-import { formatARS } from "@/lib/money";
+import { useMoney } from "./money";
 import { SubmitButton } from "./submit-button";
 
 const intFmt = new Intl.NumberFormat("es-AR");
@@ -24,6 +24,7 @@ export function BuyBox({
   unitPlural: string;
   loggedIn: boolean;
 }) {
+  const money = useMoney();
   const min = Math.min(minQuantity, stock);
   const [qty, setQty] = useState(min);
   const valid = Number.isInteger(qty) && qty >= min && qty <= stock;
@@ -67,11 +68,11 @@ export function BuyBox({
 
       <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
         <div className="flex items-baseline justify-between text-sm text-muted">
-          <span>{valid ? `${intFmt.format(qty)} × ${formatARS(priceCents)}` : "Cantidad inválida"}</span>
+          <span>{valid ? `${intFmt.format(qty)} × ${money.format(priceCents)}` : "Cantidad inválida"}</span>
           <span>Total</span>
         </div>
         <p className="mt-1 text-right font-display text-3xl font-bold text-gold-2 transition-all">
-          {valid ? formatARS(priceCents * qty) : "—"}
+          {valid ? money.format(priceCents * qty) : "—"}
         </p>
       </div>
 

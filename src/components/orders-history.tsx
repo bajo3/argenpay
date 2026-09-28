@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { formatQty } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
 import { relativeTime, type OrderListItem, type OrdersRole } from "@/lib/orders/list";
 import { ORDER_STATUSES, STATUS_LABELS, STATUS_TONE } from "@/lib/orders/state-machine";
 import { UserCell } from "./seller-badge";
 import { EmptyState, formatDate } from "./ui";
+import { Money } from "@/components/money";
 
 const toneText = { neutral: "text-muted", info: "text-info", warn: "text-gold-2", ok: "text-ok", bad: "text-bad" } as const;
 
@@ -58,7 +58,7 @@ export function OrdersHistory({ rows, role }: { rows: OrderListItem[]; role: Ord
                 <span className="pointer-events-auto relative z-10"><UserCell user={o.counterpart} /></span>
                 <span className={`self-center text-right text-sm font-semibold lg:text-left ${toneText[STATUS_TONE[o.status]]}`}>{STATUS_LABELS[o.status]}</span>
                 <span className="col-span-2 text-right font-display text-lg font-bold lg:col-span-1">
-                  {formatARS(Number(role === "comprador" ? o.price_cents : o.seller_net_cents))}
+                  <Money cents={Number(role === "comprador" ? o.price_cents : o.seller_net_cents)} />
                 </span>
               </div>
             </li>

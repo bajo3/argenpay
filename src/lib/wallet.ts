@@ -3,11 +3,13 @@ import { getPaymentsConfig } from "@/lib/config";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * El saldo (billetera) solo existe en el entorno simulado: guardar dinero de terceros requiere
- * habilitación del procesador y asesoría legal. Ver docs/decision-pagos.md.
+ * El saldo (billetera) existe en el entorno simulado y en el modo manual (cargas por transferencia o
+ * cripto verificadas por un administrador). Guardar dinero de terceros requiere asesoría legal:
+ * ver docs/decision-pagos.md.
  */
 export function walletEnabled(): boolean {
-  return getPaymentsConfig().mode === "simulado";
+  const mode = getPaymentsConfig().mode;
+  return mode === "simulado" || mode === "manual";
 }
 
 export interface WalletSummary {

@@ -5,6 +5,7 @@ import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyWallet } from "@/lib/wallet";
 import { HeaderLive } from "./header-live";
+import { CurrencyToggle } from "./money";
 import { Avatar } from "./seller-badge";
 
 const CATEGORIES = [
@@ -76,6 +77,7 @@ export async function Header() {
         </form>
 
         <div className="ml-auto flex items-center gap-0.5 lg:ml-2">
+          <CurrencyToggle />
           {/* Publicar */}
           <details className="group relative">
             <summary className="btn-primary shine cursor-pointer list-none px-3 py-2 [&::-webkit-details-marker]:hidden">

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { serverEmblem } from "@/lib/assets";
 import type { LotRow, Rating } from "@/lib/catalog";
 import { accountAge, formatQty, isOnline, raceLabel } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
+
 import { Avatar, Stars } from "./seller-badge";
+import { Money } from "@/components/money";
 
 export function deliveryLabel(hours: number) {
   if (hours < 24) return `${hours} h`;
@@ -106,7 +107,7 @@ export function LotList({
                 </span>
                 <span className="hidden text-right text-sm md:block">{formatQty(l.stock, unit, plural)}</span>
                 <span className="self-center text-right">
-                  <span className="block font-display text-lg font-bold text-gold-2">{formatARS(Number(l.price_cents))}</span>
+                  <span className="block font-display text-lg font-bold text-gold-2"><Money cents={Number(l.price_cents)} /></span>
                   <span className="text-xs text-muted">por {unit}<span className="md:hidden"> · {formatQty(l.stock, unit, plural)}</span></span>
                 </span>
               </div>

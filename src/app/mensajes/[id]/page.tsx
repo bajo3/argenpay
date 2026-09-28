@@ -9,10 +9,11 @@ import { requireUser } from "@/lib/auth";
 import { getRatings } from "@/lib/catalog";
 import { getMessages, listConversations } from "@/lib/conversations";
 import { isOnline, lastSeenLabel } from "@/lib/lu4";
-import { formatARS } from "@/lib/money";
+
 import { relativeTime } from "@/lib/orders/list";
 import type { OrderStatus } from "@/lib/orders/state-machine";
 import { createClient } from "@/lib/supabase/server";
+import { Money } from "@/components/money";
 
 export const metadata: Metadata = { title: "Mensajes" };
 
@@ -121,7 +122,7 @@ export default async function ConversationPage(props: PageProps<"/mensajes/[id]"
                     <Link href={`/ordenes/${o.id}`} className="block rounded-xl border border-line bg-bg-2/60 p-2.5 transition hover:border-gold/40">
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs text-gold">#{o.code}</span>
-                        <span className="text-xs font-semibold">{formatARS(Number(o.price_cents))}</span>
+                        <span className="text-xs font-semibold"><Money cents={Number(o.price_cents)} /></span>
                       </span>
                       <span className="mt-1 block truncate text-xs">{o.listing_snapshot.title}</span>
                       <span className="mt-1.5 block"><StatusBadge status={o.status} /></span>

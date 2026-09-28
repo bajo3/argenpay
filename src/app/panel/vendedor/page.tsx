@@ -7,10 +7,11 @@ import { SellerGate } from "@/components/seller-gate";
 import { SubmitButton } from "@/components/submit-button";
 import { EmptyState, Flash } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
-import { formatARS } from "@/lib/money";
+
 import { listMyOrders } from "@/lib/orders/list";
 import { createClient } from "@/lib/supabase/server";
 import { getMyWallet } from "@/lib/wallet";
+import { Money } from "@/components/money";
 
 export const metadata: Metadata = { title: "Mis ventas" };
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
@@ -77,11 +78,11 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
         </div>
         <div className="card animate-fade-up" style={{ "--i": 1 } as React.CSSProperties}>
           <p className="text-sm text-muted">Esperando confirmación</p>
-          <p className="font-display text-xl font-bold">{formatARS(wallet?.pendingSales ?? 0)}</p>
+          <p className="font-display text-xl font-bold"><Money cents={wallet?.pendingSales ?? 0} /></p>
         </div>
         <Link href="/saldo" className="card card-hover animate-fade-up border-gold/30" style={{ "--i": 2 } as React.CSSProperties}>
           <p className="text-sm text-muted">Saldo disponible</p>
-          <p className="font-display text-xl font-bold text-gold-2">{formatARS(wallet?.available ?? 0)}</p>
+          <p className="font-display text-xl font-bold text-gold-2"><Money cents={wallet?.available ?? 0} /></p>
         </Link>
         <div className="card animate-fade-up" style={{ "--i": 3 } as React.CSSProperties}>
           <p className="text-sm text-muted">Ofertas activas</p>
@@ -138,7 +139,7 @@ export default async function SellerPanel(props: PageProps<"/panel/vendedor">) {
                     <Link href={`/ofertas/${l.id}`} className="font-medium hover:text-gold-2">{l.auto_delivery && <span className="mr-1 text-gold-2" title="Entrega automática">⚡</span>}{l.title}</Link>
                     <p className="text-xs text-muted">{l.server?.name ?? "Todos"} · {l.category?.name}</p>
                   </td>
-                  <td className="px-4 py-3">{formatARS(Number(l.price_cents))}<span className="text-xs text-muted">/{l.category?.unit_label}</span></td>
+                  <td className="px-4 py-3"><Money cents={Number(l.price_cents)} /><span className="text-xs text-muted">/{l.category?.unit_label}</span></td>
                   <td className="px-4 py-3">{new Intl.NumberFormat("es-AR").format(l.stock)} {l.category?.unit_label_plural}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${l.status === "activa" ? "border-ok/30 bg-ok/10 text-ok" : "border-muted/30 text-muted"}`}>

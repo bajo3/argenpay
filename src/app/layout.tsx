@@ -3,8 +3,10 @@ import { Cinzel, Geist, Geist_Mono } from "next/font/google";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { ModeBanner } from "@/components/mode-banner";
+import { MoneyProvider } from "@/components/money";
 import { NavEffects } from "@/components/nav-effects";
 import { Suspense } from "react";
+import { getCurrency, getUsdRate } from "@/lib/fx";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -19,10 +21,12 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0a0910" };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const [currency, rate] = await Promise.all([getCurrency(), getUsdRate().catch(() => null)]);
   return (
     <html lang="es-AR" className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
+        <MoneyProvider initialCurrency={currency} rate={rate}>
         <ModeBanner />
         <Header />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">{children}</main>
@@ -30,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Suspense>
           <NavEffects />
         </Suspense>
+        </MoneyProvider>
       </body>
     </html>
   );

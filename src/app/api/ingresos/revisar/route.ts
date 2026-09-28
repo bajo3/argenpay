@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
 import { checkIncomingDeposits } from "@/lib/deposit-watch";
+import { refreshUsdRate } from "@/lib/fx";
 
 /**
  * Revisa los ingresos de Binance y avisa si entró dinero. La llaman:
@@ -28,8 +29,10 @@ async function handle(req: NextRequest) {
   }
   const force = req.nextUrl.searchParams.get("forzar") === "1" && !cron;
   try {
+    // Cotización del dólar cripto (se refresca cada 5 minutos como máximo).
+    const usdRate = await refreshUsdRate().catch(() => null);
     const result = await checkIncomingDeposits({ force });
-    return NextResponse.json({ ...result, region: process.env.VERCEL_REGION ?? null });
+    return NextResponse.json({ ...result, usdRate, region: process.env.VERCEL_REGION ?? null });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Error" }, { status: 500 });
   }

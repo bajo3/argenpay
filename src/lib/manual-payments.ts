@@ -17,6 +17,7 @@ export interface ManualPaymentSettings {
   wallets: CryptoWallet[];
   /** ARS (centavos) por 1 USD, solo como referencia para mostrar el equivalente en USDT/USDC. */
   usdRateCents: number | null;
+  usdRateAuto: boolean;
   instructions: string;
 }
 
@@ -38,6 +39,7 @@ export async function getManualPaymentSettings(): Promise<ManualPaymentSettings>
     binanceEmail: data?.binance_email ?? "",
     wallets: wallets.filter((w) => w && typeof w.address === "string"),
     usdRateCents: data?.usd_rate_cents != null ? Number(data.usd_rate_cents) : null,
+    usdRateAuto: data?.usd_rate_auto ?? true,
     instructions: data?.instructions ?? "",
   };
 }

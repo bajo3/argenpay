@@ -1,8 +1,9 @@
-import { formatARS } from "@/lib/money";
 import { METHOD_LABEL, realMethods, type ManualPaymentSettings } from "@/lib/manual-payments";
 import { CopyButton } from "./copy-button";
 import { ManualPayForm } from "./manual-pay-form";
 import { formatDate } from "./ui";
+import { Money } from "@/components/money";
+import { formatARS } from "@/lib/money";
 
 export interface ManualReport {
   id: number;
@@ -49,23 +50,63 @@ export function ManualPaymentPanel({
   settings: ManualPaymentSettings;
   reports: ManualReport[];
 }) {
-  const demo = !settings.configured;
-  const real = realMethods(settings);
-  // Con datos definitivos solo se muestran los medios que tienen datos reales.
-  const showCvu = demo || real.cvu || real.alias;
-  const showBinance = demo || real.binance;
-  const wallets = settings.wallets.filter((w) => demo || (w.address.length >= 20 && !/ejemplo|reemplazar/i.test(w.address)));
-  const usd = settings.usdRateCents ? priceCents / settings.usdRateCents : null;
   const pending = reports.some((r) => r.status === "pendiente");
-
-  const methods = [
-    ...(showCvu ? [{ id: "cvu", label: METHOD_LABEL.cvu }] : []),
-    ...(showBinance ? [{ id: "binance_pay", label: METHOD_LABEL.binance_pay }] : []),
-    ...(["USDT", "USDC", "BTC"] as const).filter((a) => wallets.some((w) => w.asset === a)).map((a) => ({ id: a.toLowerCase(), label: METHOD_LABEL[a.toLowerCase()] })),
-  ];
+  const methods = usableMethods(settings);
 
   return (
     <div className="space-y-4">
+      <PaymentData settings={settings} priceCents={priceCents} />
+
+      {reports.length > 0 && (
+        <ul className="space-y-2">
+          {reports.map((r) => (
+            <li key={r.id} className="rounded-xl border border-line bg-bg-2/60 p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {METHOD_LABEL[r.method] ?? r.method} · <span className="font-mono text-xs">{r.reference.slice(0, 24)}</span>
+                </span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${REPORT_STATUS[r.status].cls}`}>{REPORT_STATUS[r.status].label}</span>
+              </div>
+              <p className="text-xs text-muted">Avisado el {formatDate(r.created_at)}</p>
+              {r.admin_note && r.status === "rechazado" && <p className="mt-1 text-xs text-bad">Motivo: {r.admin_note}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {pending ? (
+        <p className="rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
+          <strong>Estamos verificando tu pago.</strong> Cuando lo confirmemos te avisamos por acá y por el chat. La verificación es manual y puede demorar.
+        </p>
+      ) : (
+        <ManualPayForm orderId={orderId} userId={userId} methods={methods} />
+      )}
+    </div>
+  );
+}
+
+/** Medios que el comprador puede usar (con datos reales, o todos si todavía son los de ejemplo). */
+export function usableMethods(settings: ManualPaymentSettings) {
+  const demo = !settings.configured;
+  const real = realMethods(settings);
+  const wallets = settings.wallets.filter((w) => demo || (w.address.length >= 20 && !/ejemplo|reemplazar/i.test(w.address)));
+  return [
+    ...(demo || real.cvu || real.alias ? [{ id: "cvu", label: METHOD_LABEL.cvu }] : []),
+    ...(demo || real.binance ? [{ id: "binance_pay", label: METHOD_LABEL.binance_pay }] : []),
+    ...(["USDT", "USDC", "BTC"] as const).filter((a) => wallets.some((w) => w.asset === a)).map((a) => ({ id: a.toLowerCase(), label: METHOD_LABEL[a.toLowerCase()] })),
+  ];
+}
+
+/** Datos de cobro (CVU/QR, Binance, direcciones cripto). Con `priceCents` muestra además el importe a pagar. */
+export function PaymentData({ settings, priceCents }: { settings: ManualPaymentSettings; priceCents?: number }) {
+  const demo = !settings.configured;
+  const real = realMethods(settings);
+  const showCvu = demo || real.cvu || real.alias;
+  const showBinance = demo || real.binance;
+  const wallets = settings.wallets.filter((w) => demo || (w.address.length >= 20 && !/ejemplo|reemplazar/i.test(w.address)));
+  const usd = settings.usdRateCents && priceCents ? priceCents / settings.usdRateCents : null;
+  return (
+    <>
       {demo && (
         <div className="rounded-xl border-2 border-bad/60 bg-bad/10 p-4 text-sm" role="alert">
           <p className="font-display text-base font-bold text-bad">DATOS DE EJEMPLO · NO TRANSFIERAS DINERO</p>
@@ -73,11 +114,13 @@ export function ManualPaymentPanel({
         </div>
       )}
 
+      {priceCents !== undefined && (
       <div className="rounded-xl border border-gold/30 bg-gold/5 p-4">
         <p className="text-sm text-muted">Importe a pagar</p>
-        <p className="font-display text-3xl font-bold text-gold-2">{formatARS(priceCents)}</p>
+        <p className="font-display text-3xl font-bold text-gold-2"><Money cents={priceCents} /></p>
         <p className="hint mt-1">Transferí el importe exacto. Si pagás en cripto, enviá el equivalente al valor del dólar del momento.</p>
       </div>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         {showCvu && (
@@ -120,7 +163,7 @@ export function ManualPaymentPanel({
             <Field label="Dirección de depósito" value={w.address} />
             {usd && (w.asset === "USDT" || w.asset === "USDC") && (
               <p className="mt-1 text-xs text-muted">
-                ≈ <strong className="text-ink">{usd.toFixed(2)} {w.asset}</strong> (referencia: dólar a {formatARS(settings.usdRateCents ?? 0)})
+                ≈ <strong className="text-ink">{usd.toFixed(2)} {w.asset}</strong> (dólar cripto a {formatARS(settings.usdRateCents ?? 0)})
               </p>
             )}
             <p className="hint mt-2">Usá exactamente esta red: si enviás por otra, los fondos se pierden. Guardá el TXID.</p>
@@ -130,30 +173,6 @@ export function ManualPaymentPanel({
 
       {settings.instructions && <p className="rounded-xl border border-line bg-bg-2/60 p-3 text-sm whitespace-pre-line">{settings.instructions}</p>}
 
-      {reports.length > 0 && (
-        <ul className="space-y-2">
-          {reports.map((r) => (
-            <li key={r.id} className="rounded-xl border border-line bg-bg-2/60 p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  {METHOD_LABEL[r.method] ?? r.method} · <span className="font-mono text-xs">{r.reference.slice(0, 24)}</span>
-                </span>
-                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${REPORT_STATUS[r.status].cls}`}>{REPORT_STATUS[r.status].label}</span>
-              </div>
-              <p className="text-xs text-muted">Avisado el {formatDate(r.created_at)}</p>
-              {r.admin_note && r.status === "rechazado" && <p className="mt-1 text-xs text-bad">Motivo: {r.admin_note}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {pending ? (
-        <p className="rounded-xl border border-gold/30 bg-gold/5 p-4 text-sm">
-          <strong>Estamos verificando tu pago.</strong> Cuando lo confirmemos te avisamos por acá y por el chat. La verificación es manual y puede demorar.
-        </p>
-      ) : (
-        <ManualPayForm orderId={orderId} userId={userId} methods={methods} />
-      )}
-    </div>
+    </>
   );
 }
