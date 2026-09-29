@@ -1,5 +1,6 @@
 import { METHOD_LABEL, realMethods, type ManualPaymentSettings } from "@/lib/manual-payments";
 import { CopyButton } from "./copy-button";
+import { QrCode } from "./qr-code";
 import { ManualPayForm } from "./manual-pay-form";
 import { formatDate } from "./ui";
 import { Money } from "@/components/money";
@@ -131,6 +132,8 @@ export function PaymentData({ settings, priceCents }: { settings: ManualPaymentS
                 {settings.qrUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element -- QR público de Storage
                   <img src={settings.qrUrl} alt="QR de cobro" className="h-full w-full object-contain" />
+                ) : real.alias || real.cvu ? (
+                  <QrCode text={real.alias ? settings.alias : settings.cvu} size={128} label={real.alias ? "QR con el alias" : "QR con el CVU"} />
                 ) : (
                   <span className="px-2 text-center text-[11px] text-neutral-500">QR de ejemplo<br />(se sube desde Administración)</span>
                 )}
@@ -141,6 +144,7 @@ export function PaymentData({ settings, priceCents }: { settings: ManualPaymentS
                 <Field label="CVU" value={settings.cvu} />
                 <Field label="Alias" value={settings.alias} />
                 <Field label="CUIT/CUIL" value={settings.cuit} />
+                {!settings.qrUrl && (real.alias || real.cvu) && <p className="hint mt-1">El QR contiene el {real.alias ? "alias" : "CVU"} (texto): copialo o escanealo con la cámara y pegalo en tu app para transferir.</p>}
               </div>
             </div>
           </section>
@@ -160,7 +164,12 @@ export function PaymentData({ settings, priceCents }: { settings: ManualPaymentS
             <p className="mb-2 text-sm font-semibold">
               {w.asset} <span className="font-normal text-muted">· red {w.network || "—"}</span>
             </p>
-            <Field label="Dirección de depósito" value={w.address} />
+            <div className="flex flex-wrap items-start gap-3">
+              {w.address.length >= 20 && !/ejemplo|reemplazar/i.test(w.address) && <QrCode text={w.address} size={112} label={`QR de la dirección ${w.asset}`} />}
+              <div className="min-w-[180px] flex-1">
+                <Field label="Dirección de depósito" value={w.address} />
+              </div>
+            </div>
             {usd && (w.asset === "USDT" || w.asset === "USDC") && (
               <p className="mt-1 text-xs text-muted">
                 ≈ <strong className="text-ink">{usd.toFixed(2)} {w.asset}</strong> (dólar cripto a {formatARS(settings.usdRateCents ?? 0)})
